@@ -1,45 +1,229 @@
 """LLM Factory
 
 Creates LLM instances based on configuration.
-Supports multiple providers: OpenAI, Anthropic, Ollama, etc.
+Supports OpenAI-compatible models with reasoning content via Chat Completions API.
 """
 
-from typing import Any
+import logging
+from typing import Any, Dict, Optional
 
 from langchain_openai import ChatOpenAI
 
-from cubebox.llm.config import LLMConfig
+from cubebox.config import config
+from cubebox.llm.config import LLMConfig, ModelConfig, ProviderConfig
+from cubebox.llm.openai_compatible import ChatOpenAICompatible
+
+logger = logging.getLogger(__name__)
 
 
 class LLMFactory:
-    """Factory for creating LLM instances"""
+    """Factory for creating LLM instances from config.yaml"""
 
-    @staticmethod
-    def create(config: LLMConfig) -> Any:
+    def __init__(self, llm_config: LLMConfig | None = None):
         """
-        Create an LLM instance based on configuration.
+        Initialize LLM factory.
 
         Args:
-            config: LLM configuration
+            llm_config: LLM configuration. If None, loads from global config.
+        """
+        if llm_config is None:
+            # Load from global config
+            llm_config = LLMConfig(**config.llm)
+        self.llm_config = llm_config
+
+    def _find_model(
+        self, model_id: str, provider_name: Optional[str] = None
+    ) -> tuple[str, ProviderConfig, ModelConfig]:
+        """
+        Find model configuration by model_id and optional provider_name.
+
+        Args:
+            model_id: Model ID to search for
+            provider_name: Optional provider name to narrow search
 
         Returns:
-            LLM instance
+            Tuple of (provider_name, provider_config, model_config)
 
         Raises:
-            ValueError: If provider is not supported
+            ValueError: If model not found or provider not found
         """
-        if config.provider == "openai":
-            return ChatOpenAI(
-                model=config.model,
-                api_key=config.api_key,
-                temperature=config.temperature,
-                max_tokens=config.max_tokens,
+        if provider_name:
+            # Search in specific provider
+            provider_config = self.llm_config.providers.get(provider_name)
+            if not provider_config:
+                raise ValueError(f"Provider '{provider_name}' not found in config")
+
+            for model in provider_config.models:
+                if model.id == model_id:
+                    return provider_name, provider_config, model
+
+            raise ValueError(
+                f"Model '{model_id}' not found in provider '{provider_name}'"
             )
-        elif config.provider == "anthropic":
+
+        # Search across all providers
+        found_models = []
+        for prov_name, prov_config in self.llm_config.providers.items():
+            for model in prov_config.models:
+                if model.id == model_id:
+                    found_models.append((prov_name, prov_config, model))
+
+        if not found_models:
+            raise ValueError(f"Model '{model_id}' not found in any provider")
+
+        if len(found_models) > 1:
+            provider_names = [m[0] for m in found_models]
+            logger.warning(
+                "Model '%s' found in multiple providers: %s. Using first match: '%s'",
+                model_id,
+                provider_names,
+                found_models[0][0],
+            )
+
+        return found_models[0]
+
+    def create(
+        self,
+        model_id: str,
+        provider_name: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        reasoning_config: Optional[Dict[str, Any]] = None,
+        use_responses_api: bool = False,
+        **kwargs,
+    ) -> Any:
+        """
+        Create an LLM instance based on model_id and optional provider_name.
+
+        If only model_id is provided, searches across all providers.
+        If model_id exists in multiple providers, logs a warning and uses the first match.
+
+        For OpenAI official API with reasoning models (o1, o3, etc.):
+        - Set reasoning_config to enable reasoning via Responses API
+        - Example: reasoning_config={'effort': 'medium', 'summary': 'auto'}
+
+        For OpenAI-compatible endpoints (DeepSeek, DouBao, Qwen, etc.):
+        - Uses ChatOpenAICompatible to extract reasoning_content from Chat Completions
+        - Automatically used for custom base_url endpoints
+
+        Args:
+            model_id: Model ID (e.g., 'doubao-seed-1.8')
+            provider_name: Optional provider name (e.g., 'sensedeal-ai')
+            temperature: Temperature parameter (default: 0.7)
+            max_tokens: Override max tokens from model config
+            reasoning_config: Reasoning config for OpenAI reasoning models
+            use_responses_api: Use OpenAI Responses API
+            **kwargs: Additional kwargs passed to LLM constructor
+
+        Returns:
+            LLM instance (ChatOpenAI or ChatOpenAICompatible)
+
+        Raises:
+            ValueError: If provider or model not found, or API type not supported
+        """
+        # Find model configuration
+        provider_name, provider_config, model_config = self._find_model(
+            model_id, provider_name
+        )
+
+        # Build kwargs for LLM initialization
+        llm_kwargs = {
+            "model": model_config.id,
+            "api_key": provider_config.api_key,
+            "base_url": provider_config.base_url,
+            "temperature": temperature,
+        }
+
+        # Use provided max_tokens if set, otherwise use model's max_tokens
+        final_max_tokens = max_tokens or model_config.max_tokens
+        if final_max_tokens:
+            llm_kwargs["max_tokens"] = final_max_tokens
+
+        # Merge extra_body and extra_headers (model overrides provider)
+        extra_body = {**provider_config.extra_body, **model_config.extra_body}
+        extra_headers = {
+            **provider_config.extra_headers,
+            **model_config.extra_headers,
+        }
+
+        if extra_body:
+            llm_kwargs["model_kwargs"] = {"extra_body": extra_body}
+        if extra_headers:
+            llm_kwargs["default_headers"] = extra_headers
+
+        # Merge additional kwargs
+        llm_kwargs.update(kwargs)
+
+        # Handle different API types
+        if provider_config.api == "openai-completions":
+            # Check if this is official OpenAI API
+            is_official_openai = (
+                not provider_config.base_url
+                or "api.openai.com" in provider_config.base_url
+            )
+
+            if is_official_openai:
+                # Official OpenAI API - use ChatOpenAI with Responses API for reasoning
+                if reasoning_config:
+                    llm_kwargs["reasoning"] = reasoning_config
+                elif use_responses_api:
+                    llm_kwargs["use_responses_api"] = True
+
+                return ChatOpenAI(**llm_kwargs)
+
+            # Custom OpenAI-compatible endpoint - use ChatOpenAICompatible
+            # This supports reasoning_content extraction from Chat Completions API
+            return ChatOpenAICompatible(**llm_kwargs)
+
+        if provider_config.api == "anthropic":
             # TODO: Implement Anthropic support
-            raise NotImplementedError("Anthropic provider not yet implemented")
-        elif config.provider == "ollama":
-            # TODO: Implement Ollama support
-            raise NotImplementedError("Ollama provider not yet implemented")
-        else:
-            raise ValueError(f"Unsupported LLM provider: {config.provider}")
+            raise NotImplementedError("Anthropic API not yet implemented")
+
+        raise ValueError(f"Unsupported API type: {provider_config.api}")
+
+    def get_model_config(self, provider_name: str, model_id: str):
+        """
+        Get model configuration.
+
+        Args:
+            provider_name: Provider name
+            model_id: Model ID
+
+        Returns:
+            ModelConfig instance
+
+        Raises:
+            ValueError: If provider or model not found
+        """
+        provider_config = self.llm_config.providers.get(provider_name)
+        if not provider_config:
+            raise ValueError(f"Provider '{provider_name}' not found in config")
+
+        for model in provider_config.models:
+            if model.id == model_id:
+                return model
+
+        raise ValueError(f"Model '{model_id}' not found in provider '{provider_name}'")
+
+    def list_providers(self) -> list[str]:
+        """List all available provider names."""
+        return list(self.llm_config.providers.keys())
+
+    def list_models(self, provider_name: str) -> list[str]:
+        """
+        List all model IDs for a provider.
+
+        Args:
+            provider_name: Provider name
+
+        Returns:
+            List of model IDs
+
+        Raises:
+            ValueError: If provider not found
+        """
+        provider_config = self.llm_config.providers.get(provider_name)
+        if not provider_config:
+            raise ValueError(f"Provider '{provider_name}' not found in config")
+
+        return [model.id for model in provider_config.models]

@@ -3,10 +3,44 @@
 debug: false
 
 # LLM Configuration
+# Note: For reasoning models, set reasoning config to enable reasoning output
+# Example: reasoning: {effort: "medium", summary: "auto"}
 llm:
-  provider: openai
-  model: gpt-4
-  temperature: 0.7
+  # Model Providers Configuration
+  providers:
+    sensedeal-ai:
+      baseUrl: "https://gateway.chat.sensedeal.vip/v1"
+      apiKey: "sd-moltbot-NDjKH1Kh4BElYUa4OXP4Mia0NZc3oBU"
+      api: "openai-completions"
+      extra_body: {}
+      extra_headers: {}
+      models:
+        - id: "doubao-seed-1.8"
+          name: "DouBao Seed 1.8"
+          reasoning: false
+          input: ["text", "image"]
+          cost:
+            input: 2.4
+            output: 24
+            cacheRead: 0
+            cacheWrite: 0
+          contextWindow: 256000
+          maxTokens: 64000
+          extra_body: {}
+          extra_headers: {}
+        - id: "qwen3-max-2026-01-23"
+          name: "Qwen3 Max 0123"
+          reasoning: false
+          input: ["text"]
+          cost:
+            input: 7
+            output: 28
+            cacheRead: 0
+            cacheWrite: 0
+          contextWindow: 256000
+          maxTokens: 32000
+          extra_body: {}
+          extra_headers: {}
 
 # Sandbox Configuration
 sandbox:
