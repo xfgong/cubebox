@@ -1,0 +1,6 @@
+# Production Configuration
+
+debug: false
+
+api:
+  reload: false

@@ -1,0 +1,6 @@
+# Development Configuration
+
+debug: true
+
+api:
+  reload: true
