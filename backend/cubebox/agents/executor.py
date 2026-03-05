@@ -13,12 +13,10 @@ from loguru import logger
 
 from cubebox.agents.schemas import (
     AgentEvent,
-    ChainEndEvent,
     ChainStartEvent,
     DoneEvent,
     ErrorEvent,
     LLMEndEvent,
-    LLMStartEvent,
     ToolEndEvent,
     ToolStartEvent,
 )
@@ -99,113 +97,87 @@ class DeepAgentExecutor:
         """
         return datetime.now(UTC).isoformat()
 
-    def _convert_event(self, event: dict[str, Any]) -> AgentEvent | None:
+    def _convert_event(self, node_name: str, data: Any) -> AgentEvent | None:
         """
-        Convert LangChain event to AgentEvent.
+        Convert DeepAgent node update to AgentEvent.
 
         Args:
-            event: LangChain event dictionary
+            node_name: DeepAgent node name (e.g., 'model', 'tools')
+            data: Node update data
 
         Returns:
-            AgentEvent instance or None if event type not supported
+            AgentEvent instance or None if node type not relevant for streaming
         """
-        event_type = event.get("event")
         timestamp = self._get_current_timestamp()
 
         try:
-            if event_type == "on_chain_start":
-                data = event.get("data", {})
-                input_data = data.get("input", {})
-                if isinstance(input_data, dict):
-                    input_text = input_data.get("input", "")
-                else:
-                    input_text = str(input_data)
-                return ChainStartEvent(
-                    timestamp=timestamp,
-                    data={"input": input_text},
-                )
+            # Handle model node (LLM calls)
+            if node_name == "model":
+                messages = data.get("messages", [])
+                if not messages:
+                    return None
 
-            elif event_type == "on_llm_start":
-                data = event.get("data", {})
-                return LLMStartEvent(
-                    timestamp=timestamp,
-                    data={
-                        "model": data.get("model", "unknown"),
-                        "messages": data.get("messages", []),
-                    },
-                )
+                # Get the last message (most recent AI response)
+                last_msg = messages[-1]
 
-            elif event_type == "on_llm_end":
-                data = event.get("data", {})
-                output = data.get("output", {})
-                # Extract content from LangChain output
-                content = ""
-                if isinstance(output, dict):
-                    if "content" in output:
-                        content = output["content"]
-                    elif "message" in output:
-                        msg = output["message"]
-                        if isinstance(msg, dict) and "content" in msg:
-                            content = msg["content"]
-                else:
-                    content = str(output)
+                # Check if this is a tool call or final response
+                tool_calls = getattr(last_msg, "tool_calls", [])
+                content = getattr(last_msg, "content", "")
+                usage_metadata = getattr(last_msg, "usage_metadata", {})
 
-                usage = data.get("usage", {})
-                return LLMEndEvent(
-                    timestamp=timestamp,
-                    data={
-                        "output": content,
-                        "usage": {
-                            "input_tokens": usage.get("input_tokens", 0),
-                            "output_tokens": usage.get("output_tokens", 0),
+                if tool_calls:
+                    # This is a tool call - yield tool start events
+                    # We'll return the first tool call as an event
+                    # (multiple tool calls would need multiple events)
+                    tool_call = tool_calls[0]
+                    return ToolStartEvent(
+                        timestamp=timestamp,
+                        data={
+                            "tool_name": tool_call.get("name", "unknown"),
+                            "input": tool_call.get("args", {}),
                         },
-                    },
-                )
+                    )
+                elif content:
+                    # This is a final response
+                    return LLMEndEvent(
+                        timestamp=timestamp,
+                        data={
+                            "output": content,
+                            "usage": {
+                                "input_tokens": usage_metadata.get("input_tokens", 0),
+                                "output_tokens": usage_metadata.get("output_tokens", 0),
+                            },
+                        },
+                    )
+                else:
+                    # No tool calls and no content - ignore this update
+                    return None
 
-            elif event_type == "on_tool_start":
-                data = event.get("data", {})
-                return ToolStartEvent(
-                    timestamp=timestamp,
-                    data={
-                        "tool_name": data.get("tool_name", "unknown"),
-                        "input": data.get("input", {}),
-                    },
-                )
+            # Handle tools node (tool execution results)
+            elif node_name == "tools":
+                messages = data.get("messages", [])
+                if not messages:
+                    return None
 
-            elif event_type == "on_tool_end":
-                data = event.get("data", {})
+                # Get the last tool message
+                last_msg = messages[-1]
+                tool_name = getattr(last_msg, "name", "unknown")
+                content = getattr(last_msg, "content", "")
+
                 return ToolEndEvent(
                     timestamp=timestamp,
                     data={
-                        "tool_name": data.get("tool_name", "unknown"),
-                        "output": data.get("output", ""),
+                        "tool_name": tool_name,
+                        "output": content,
                     },
                 )
 
-            elif event_type == "on_chain_end":
-                data = event.get("data", {})
-                output = data.get("output", {})
-                # Extract output content
-                output_text = ""
-                if isinstance(output, dict):
-                    if "output" in output:
-                        output_text = str(output["output"])
-                    else:
-                        output_text = str(output)
-                else:
-                    output_text = str(output)
-
-                return ChainEndEvent(
-                    timestamp=timestamp,
-                    data={"output": output_text},
-                )
-
+            # Ignore middleware nodes and other internal nodes
             else:
-                logger.debug("Unsupported event type: {}", event_type)
                 return None
 
         except Exception as e:
-            logger.error("Error converting event {}: {}", event_type, str(e))
+            logger.error("Error converting node {} update: {}", node_name, str(e))
             return None
 
     async def stream(self, input_text: str) -> AsyncIterator[AgentEvent]:
@@ -247,16 +219,15 @@ class DeepAgentExecutor:
                 stream_mode="updates",
             ):
                 event_count += 1
-                logger.debug("Received chunk: {}", chunk)
+                logger.debug("Received chunk from node: {}", list(chunk.keys()) if chunk else [])
 
                 # Convert and yield event
                 # Note: chunk is a dict with node_name -> data mapping
                 if isinstance(chunk, dict):
                     for node_name, data in chunk.items():
-                        converted_event = self._convert_event(
-                            {"event": f"on_{node_name}", "data": data}
-                        )
+                        converted_event = self._convert_event(node_name, data)
                         if converted_event:
+                            logger.debug("Yielding event: {}", converted_event.type)
                             yield converted_event
 
             logger.info("Agent execution completed with {} chunks", event_count)

@@ -66,3 +66,6 @@ default:
     enabled: false
     servers: []
   
+  langsmith:
+    enable: true
+    key: "USE ENV"

@@ -6,6 +6,7 @@ This is useful for OpenAI-compatible endpoints that return reasoning in the resp
 
 from typing import Any
 
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
@@ -114,6 +115,20 @@ class ChatOpenAICompatible(ChatOpenAI):
                     )
 
         return generation_chunk
+
+    def _get_request_payload(
+        self,
+        input_: LanguageModelInput,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:  # type: ignore[type-arg]
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        # Revert max_completion_tokens back to max_tokens for compatibility
+        # with OpenAI-compatible endpoints that don't support the new param name
+        if "max_completion_tokens" in payload:
+            payload["max_tokens"] = payload.pop("max_completion_tokens")
+        return payload
 
     @property
     def _llm_type(self) -> str:
