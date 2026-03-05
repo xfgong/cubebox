@@ -4,52 +4,9 @@ Tests the POST /api/v1/agents/run endpoint with real API calls
 using test environment configuration.
 """
 
-import os
-
-import pytest
 from fastapi.testclient import TestClient
 
-from cubebox.api.app import create_app
-from tests.conftest import assert_event_contains, parse_sse_events
-
-
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_env() -> None:
-    """Set up test environment configuration
-
-    Ensures test config is loaded before any tests run
-    """
-    os.environ["ENV_FOR_DYNACONF"] = "test"
-
-
-@pytest.fixture
-def client() -> TestClient:
-    """Create test client for API testing with test config
-
-    Returns:
-        TestClient instance
-    """
-    app = create_app()
-    return TestClient(app)
-
-
-class TestAPIBasic:
-    """Basic API functionality tests"""
-
-    def test_api_valid_request(self, client: TestClient) -> None:
-        """Test valid request returns 200 with SSE stream
-
-        Validates: Requirements 4.1, 4.2
-        """
-        response = client.post(
-            "/api/v1/agents/run",
-            json={"input": "What is 2 + 3?"},
-        )
-
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers["content-type"]
-        assert len(response.text) > 0
-        assert "data: " in response.text
+from tests.e2e.helpers import assert_event_contains, parse_sse_events
 
 
 class TestAPIEventStream:
@@ -75,6 +32,11 @@ class TestAPIEventStream:
         event_types = [event.type for event in events]
         assert "chain_start" in event_types
         assert "done" in event_types
+
+        # Verify no error events in successful execution
+        assert "error" not in event_types, (
+            f"Unexpected error event in successful execution: {events}"
+        )
 
         # Verify order: chain_start first, done last
         assert events[0].type == "chain_start"

@@ -44,12 +44,12 @@ type-check:
 
 test:
 	@echo "Running tests..."
-	uv run pytest
+	uv run pytest -s -v
 	@echo "✓ Tests passed"
 
 test-cov:
 	@echo "Running tests with coverage..."
-	uv run pytest --cov=cubebox --cov-report=term-missing --cov-report=html
+	uv run pytest -s --cov=cubebox --cov-report=term-missing --cov-report=html
 	@echo "✓ Coverage report generated in htmlcov/"
 
 check: format lint type-check test

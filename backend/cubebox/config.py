@@ -24,8 +24,8 @@ settings_files = [
 ]
 
 config = dynaconf.Dynaconf(
-    env=env,
     environments=True,
+    dotenv_path=str(backend_dir / ".env"),
     envvar_prefix="CUBEBOX",
     settings_files=settings_files,
     load_dotenv=True,

@@ -3,19 +3,17 @@
 Provides REST API endpoints for executing DeepAgent tasks with streaming support.
 """
 
-import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, status
 from fastapi.responses import StreamingResponse
+from loguru import logger
 from pydantic import ValidationError
 
 from cubebox.agents.executor import DeepAgentExecutor
 from cubebox.agents.schemas import DoneEvent, ExecuteRequest
 from cubebox.api.exceptions import ExecutionError, InternalError, InvalidInputError
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -39,7 +37,7 @@ async def run_agent(request: ExecuteRequest) -> StreamingResponse:
         ExecutionError: If agent execution fails
         InternalError: For unexpected errors
     """
-    logger.info("Agent execution request received: %s", request.input[:100])
+    logger.info("Agent execution request received: {}", request.input[:100])
 
     try:
         # Validate request
@@ -52,7 +50,7 @@ async def run_agent(request: ExecuteRequest) -> StreamingResponse:
         logger.debug("Request validated successfully")
 
     except ValidationError as e:
-        logger.error("Request validation failed: %s", str(e))
+        logger.error("Request validation failed: {}", str(e))
         raise InvalidInputError(
             message="Invalid request format",
             details=str(e),
@@ -76,11 +74,11 @@ async def run_agent(request: ExecuteRequest) -> StreamingResponse:
                 # Convert event to JSON and format as SSE
                 event_json = event.model_dump_json()
                 sse_event = f"data: {event_json}\n\n"
-                logger.debug("Yielding event: %s", event.type)
+                logger.debug("Yielding event: {}", event.type)
                 yield sse_event
 
         except InvalidInputError as e:
-            logger.error("Invalid input error: %s", str(e))
+            logger.error("Invalid input error: {}", str(e))
             error_event = e.to_error_event()
             yield f"data: {error_event.model_dump_json()}\n\n"
             # Yield done event
@@ -90,7 +88,7 @@ async def run_agent(request: ExecuteRequest) -> StreamingResponse:
             yield f"data: {done_event.model_dump_json()}\n\n"
 
         except ExecutionError as e:
-            logger.error("Execution error: %s", str(e))
+            logger.error("Execution error: {}", str(e))
             error_event = e.to_error_event()
             yield f"data: {error_event.model_dump_json()}\n\n"
             # Yield done event
@@ -100,7 +98,7 @@ async def run_agent(request: ExecuteRequest) -> StreamingResponse:
             yield f"data: {done_event.model_dump_json()}\n\n"
 
         except Exception as e:  # noqa: BLE001
-            logger.error("Unexpected error during execution: %s", str(e), exc_info=True)
+            logger.error("Unexpected error during execution: {}", str(e), exc_info=True)
             error = InternalError(
                 message="An unexpected error occurred during execution",
                 details=str(e),

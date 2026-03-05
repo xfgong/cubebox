@@ -4,12 +4,12 @@ Core executor for running DeepAgent-based tasks with streaming support.
 Handles agent creation, tool loading, and event streaming.
 """
 
-import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.tools import StructuredTool
+from loguru import logger
 
 from cubebox.agents.schemas import (
     AgentEvent,
@@ -25,8 +25,6 @@ from cubebox.agents.schemas import (
 from cubebox.llm.factory import LLMFactory
 from cubebox.tools import get_registry
 
-logger = logging.getLogger(__name__)
-
 
 class DeepAgentExecutor:
     """Executor for DeepAgent-based task execution with streaming support"""
@@ -40,7 +38,7 @@ class DeepAgentExecutor:
         logger.info("Initializing DeepAgentExecutor")
         self.llm = self._create_llm()
         self.tools = self._load_tools()
-        logger.info(f"DeepAgentExecutor initialized with {len(self.tools)} tools")
+        logger.info("DeepAgentExecutor initialized with {} tools", len(self.tools))
 
     def _create_llm(self) -> Any:
         """
@@ -67,11 +65,11 @@ class DeepAgentExecutor:
                 raise ValueError(f"No models available in provider '{provider_name}'")
 
             model_id = models[0]
-            logger.info(f"Creating LLM with model: {model_id} from provider: {provider_name}")
+            logger.info("Creating LLM with model: {} from provider: {}", model_id, provider_name)
             llm = factory.create(model_id=model_id, provider_name=provider_name)
             return llm
         except Exception as e:
-            logger.error(f"Failed to create LLM: {str(e)}")
+            logger.error("Failed to create LLM: {}", str(e))
             raise
 
     def _load_tools(self) -> list[StructuredTool]:
@@ -84,12 +82,12 @@ class DeepAgentExecutor:
         try:
             registry = get_registry()
             tools = registry.list_tools()
-            logger.info(f"Loaded {len(tools)} tools from registry")
+            logger.info("Loaded {} tools from registry", len(tools))
             for tool in tools:
-                logger.debug(f"Tool available: {tool.name}")
+                logger.debug("Tool available: {}", tool.name)
             return tools
         except Exception as e:
-            logger.error(f"Failed to load tools: {str(e)}")
+            logger.error("Failed to load tools: {}", str(e))
             raise
 
     def _get_current_timestamp(self) -> str:
@@ -203,11 +201,11 @@ class DeepAgentExecutor:
                 )
 
             else:
-                logger.debug(f"Unsupported event type: {event_type}")
+                logger.debug("Unsupported event type: {}", event_type)
                 return None
 
         except Exception as e:
-            logger.error(f"Error converting event {event_type}: {str(e)}")
+            logger.error("Error converting event {}: {}", event_type, str(e))
             return None
 
     async def stream(self, input_text: str) -> AsyncIterator[AgentEvent]:
@@ -226,7 +224,7 @@ class DeepAgentExecutor:
         Raises:
             Exception: If agent execution fails
         """
-        logger.info(f"Starting agent execution with input: {input_text[:100]}")
+        logger.info("Starting agent execution with input: {}", input_text[:100])
 
         try:
             # Import here to avoid circular imports
@@ -249,7 +247,7 @@ class DeepAgentExecutor:
                 stream_mode="updates",
             ):
                 event_count += 1
-                logger.debug(f"Received chunk: {chunk}")
+                logger.debug("Received chunk: {}", chunk)
 
                 # Convert and yield event
                 # Note: chunk is a dict with node_name -> data mapping
@@ -261,13 +259,13 @@ class DeepAgentExecutor:
                         if converted_event:
                             yield converted_event
 
-            logger.info(f"Agent execution completed with {event_count} chunks")
+            logger.info("Agent execution completed with {} chunks", event_count)
 
             # Yield done event
             yield DoneEvent(timestamp=self._get_current_timestamp())
 
         except Exception as e:
-            logger.error(f"Error during agent execution: {str(e)}", exc_info=True)
+            logger.exception("Error during agent execution: {}", str(e), exc_info=True)
             # Yield error event
             yield ErrorEvent(
                 timestamp=self._get_current_timestamp(),

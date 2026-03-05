@@ -14,12 +14,12 @@ class ModelCost(BaseModel):
     input: float = Field(description="Input token cost per million tokens")
     output: float = Field(description="Output token cost per million tokens")
     cache_read: float = Field(
-        default=0, description="Cache read cost per million tokens", alias="cacheRead"
+        default=0, description="Cache read cost per million tokens", alias="cache_read"
     )
     cache_write: float = Field(
         default=0,
         description="Cache write cost per million tokens",
-        alias="cacheWrite",
+        alias="cache_write",
     )
 
     class Config:
@@ -54,8 +54,8 @@ class ModelConfig(BaseModel):
 class ProviderConfig(BaseModel):
     """Configuration for an LLM provider"""
 
-    base_url: str = Field(description="Base URL for API", alias="baseUrl")
-    api_key: str = Field(description="API key", alias="apiKey")
+    base_url: str = Field(description="Base URL for API", alias="base_url")
+    api_key: str = Field(description="API key", alias="api_key")
     api: str = Field(
         default="openai-completions",
         description="API type (openai-completions, anthropic, etc.)",

@@ -16,8 +16,8 @@ default:
     # Model Providers Configuration
     providers:
       cubebox:
-        baseUrl: "USE ENV"
-        apiKey: "USE ENV"
+        base_url: "USE ENV"
+        api_key: "USE ENV"
         api: "openai-completions"
         extra_body: {}
         extra_headers: {}
@@ -29,10 +29,10 @@ default:
             cost:
               input: 2.4
               output: 24
-              cacheRead: 0
-              cacheWrite: 0
-            contextWindow: 256000
-            maxTokens: 64000
+              cache_read: 0
+              cache_write: 0
+            context_window: 256000
+            max_tokens: 64000
             extra_body: {}
             extra_headers: {}
           - id: "qwen3-max-2026-01-23"
@@ -42,10 +42,10 @@ default:
             cost:
               input: 7
               output: 28
-              cacheRead: 0
-              cacheWrite: 0
-            contextWindow: 256000
-            maxTokens: 32000
+              cache_read: 0
+              cache_write: 0
+            context_window: 256000
+            max_tokens: 32000
             extra_body: {}
             extra_headers: {}
   
