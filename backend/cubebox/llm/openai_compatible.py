@@ -4,7 +4,7 @@ Extends ChatOpenAI to extract reasoning_content field from Chat Completions API.
 This is useful for OpenAI-compatible endpoints that return reasoning in the response.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
@@ -44,7 +44,7 @@ class ChatOpenAICompatible(ChatOpenAI):
     def _create_chat_result(
         self,
         response: Any,
-        generation_info: Optional[Dict[str, Any]] = None,
+        generation_info: dict[str, Any] | None = None,
     ) -> ChatResult:
         """Create ChatResult from API response, extracting reasoning_content.
 
@@ -64,10 +64,7 @@ class ChatOpenAICompatible(ChatOpenAI):
         # Extract reasoning_content if available (only for non-dict responses)
         if not isinstance(response, dict) and hasattr(response, "choices"):
             for i, res in enumerate(response.choices):
-                if (
-                    hasattr(res.message, "reasoning_content")
-                    and res.message.reasoning_content
-                ):
+                if hasattr(res.message, "reasoning_content") and res.message.reasoning_content:
                     if i < len(result.generations):
                         message = result.generations[i].message
                         if isinstance(message, AIMessage):
@@ -79,10 +76,10 @@ class ChatOpenAICompatible(ChatOpenAI):
 
     def _convert_chunk_to_generation_chunk(
         self,
-        chunk: dict,
+        chunk: dict[str, Any],
         default_chunk_class: type,
-        base_generation_info: Optional[dict],
-    ) -> Optional[ChatGenerationChunk]:
+        base_generation_info: dict[str, Any] | None,
+    ) -> ChatGenerationChunk | None:
         """Convert chunk to generation chunk, extracting reasoning_content.
 
         This method extends the parent implementation to extract reasoning_content
@@ -111,9 +108,7 @@ class ChatOpenAICompatible(ChatOpenAI):
             delta = choice.get("delta")
             if delta and "reasoning_content" in delta:
                 reasoning_content = delta["reasoning_content"]
-                if reasoning_content and isinstance(
-                    generation_chunk.message, AIMessageChunk
-                ):
+                if reasoning_content and isinstance(generation_chunk.message, AIMessageChunk):
                     generation_chunk.message.additional_kwargs["reasoning_content"] = (
                         reasoning_content
                     )

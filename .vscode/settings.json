@@ -1,0 +1,46 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/backend"
+    ],
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.cwd": "${workspaceFolder}/backend",
+    "python.formatting.provider": "black",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "[python]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+        "**/.ruff_cache": true
+    },
+    "files.watcherExclude": {
+        "**/.venv/**": true,
+        "**/node_modules/**": true
+    },
+    "terminal.integrated.env.linux": {
+        "ENV_FOR_DYNACONF": "development",
+        "CUBEBOX_DEBUG": "true"
+    },
+    "terminal.integrated.env.osx": {
+        "ENV_FOR_DYNACONF": "development",
+        "CUBEBOX_DEBUG": "true"
+    },
+    "terminal.integrated.env.windows": {
+        "ENV_FOR_DYNACONF": "development",
+        "CUBEBOX_DEBUG": "true"
+    }
+}

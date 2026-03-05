@@ -5,7 +5,7 @@ Supports OpenAI-compatible models with reasoning content via Chat Completions AP
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -32,7 +32,7 @@ class LLMFactory:
         self.llm_config = llm_config
 
     def _find_model(
-        self, model_id: str, provider_name: Optional[str] = None
+        self, model_id: str, provider_name: str | None = None
     ) -> tuple[str, ProviderConfig, ModelConfig]:
         """
         Find model configuration by model_id and optional provider_name.
@@ -57,9 +57,7 @@ class LLMFactory:
                 if model.id == model_id:
                     return provider_name, provider_config, model
 
-            raise ValueError(
-                f"Model '{model_id}' not found in provider '{provider_name}'"
-            )
+            raise ValueError(f"Model '{model_id}' not found in provider '{provider_name}'")
 
         # Search across all providers
         found_models = []
@@ -85,12 +83,12 @@ class LLMFactory:
     def create(
         self,
         model_id: str,
-        provider_name: Optional[str] = None,
+        provider_name: str | None = None,
         temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        reasoning_config: Optional[Dict[str, Any]] = None,
+        max_tokens: int | None = None,
+        reasoning_config: dict[str, Any] | None = None,
         use_responses_api: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> Any:
         """
         Create an LLM instance based on model_id and optional provider_name.
@@ -122,9 +120,7 @@ class LLMFactory:
             ValueError: If provider or model not found, or API type not supported
         """
         # Find model configuration
-        provider_name, provider_config, model_config = self._find_model(
-            model_id, provider_name
-        )
+        provider_name, provider_config, model_config = self._find_model(model_id, provider_name)
 
         # Build kwargs for LLM initialization
         llm_kwargs = {
@@ -158,8 +154,7 @@ class LLMFactory:
         if provider_config.api == "openai-completions":
             # Check if this is official OpenAI API
             is_official_openai = (
-                not provider_config.base_url
-                or "api.openai.com" in provider_config.base_url
+                not provider_config.base_url or "api.openai.com" in provider_config.base_url
             )
 
             if is_official_openai:
@@ -169,11 +164,11 @@ class LLMFactory:
                 elif use_responses_api:
                     llm_kwargs["use_responses_api"] = True
 
-                return ChatOpenAI(**llm_kwargs)
+                return ChatOpenAI(**llm_kwargs)  # type: ignore
 
             # Custom OpenAI-compatible endpoint - use ChatOpenAICompatible
             # This supports reasoning_content extraction from Chat Completions API
-            return ChatOpenAICompatible(**llm_kwargs)
+            return ChatOpenAICompatible(**llm_kwargs)  # type: ignore
 
         if provider_config.api == "anthropic":
             # TODO: Implement Anthropic support
@@ -181,7 +176,7 @@ class LLMFactory:
 
         raise ValueError(f"Unsupported API type: {provider_config.api}")
 
-    def get_model_config(self, provider_name: str, model_id: str):
+    def get_model_config(self, provider_name: str, model_id: str) -> ModelConfig:
         """
         Get model configuration.
 

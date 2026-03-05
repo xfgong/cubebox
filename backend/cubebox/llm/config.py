@@ -3,7 +3,7 @@
 Defines configuration for different LLM providers matching config.yaml structure.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -31,21 +31,17 @@ class ModelConfig(BaseModel):
 
     id: str = Field(description="Model identifier")
     name: str = Field(description="Model display name")
-    reasoning: bool = Field(
-        default=False, description="Whether this is a reasoning model"
-    )
-    input: List[str] = Field(
+    reasoning: bool = Field(default=False, description="Whether this is a reasoning model")
+    input: list[str] = Field(
         default=["text"], description="Supported input types (text, image, etc.)"
     )
     cost: ModelCost = Field(description="Cost configuration")
-    context_window: int = Field(
-        description="Context window size in tokens", alias="contextWindow"
-    )
+    context_window: int = Field(description="Context window size in tokens", alias="contextWindow")
     max_tokens: int = Field(description="Maximum output tokens", alias="maxTokens")
-    extra_body: Dict[str, Any] = Field(
+    extra_body: dict[str, Any] = Field(
         default_factory=dict, description="Extra body parameters", alias="extra_body"
     )
-    extra_headers: Dict[str, Any] = Field(
+    extra_headers: dict[str, Any] = Field(
         default_factory=dict,
         description="Extra headers",
         alias="extra_headers",
@@ -64,17 +60,15 @@ class ProviderConfig(BaseModel):
         default="openai-completions",
         description="API type (openai-completions, anthropic, etc.)",
     )
-    extra_body: Dict[str, Any] = Field(
+    extra_body: dict[str, Any] = Field(
         default_factory=dict, description="Extra body parameters", alias="extra_body"
     )
-    extra_headers: Dict[str, Any] = Field(
+    extra_headers: dict[str, Any] = Field(
         default_factory=dict,
         description="Extra headers",
         alias="extra_headers",
     )
-    models: List[ModelConfig] = Field(
-        default_factory=list, description="Available models"
-    )
+    models: list[ModelConfig] = Field(default_factory=list, description="Available models")
 
     class Config:
         populate_by_name = True
@@ -83,7 +77,7 @@ class ProviderConfig(BaseModel):
 class LLMConfig(BaseModel):
     """Root LLM configuration matching config.yaml structure"""
 
-    providers: Dict[str, ProviderConfig] = Field(
+    providers: dict[str, ProviderConfig] = Field(
         default_factory=dict, description="LLM providers configuration"
     )
 

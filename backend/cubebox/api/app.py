@@ -7,18 +7,16 @@ Creates and configures the FastAPI application with:
 - Error handling
 """
 
-import subprocess
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from loguru import logger
 
-from cubebox.config import config
 from cubebox.utils import log
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # type: ignore
     """
     Application lifespan manager.
     Handles startup and shutdown events.

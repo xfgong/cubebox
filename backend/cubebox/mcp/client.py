@@ -3,13 +3,13 @@
 Manages connections to MCP servers and tool integration.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class MCPClient:
     """Client for MCP server communication"""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """
         Initialize MCP client.
 
@@ -29,7 +29,7 @@ class MCPClient:
         # TODO: Implement MCP disconnection
         pass
 
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """
         List available tools from MCP server.
 
@@ -39,7 +39,7 @@ class MCPClient:
         # TODO: Implement tool listing
         return []
 
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         """
         Call a tool on the MCP server.
 
@@ -57,41 +57,6 @@ class MCPClient:
 class MCPManager:
     """Manager for multiple MCP servers"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize MCP manager"""
-        self.clients: Dict[str, MCPClient] = {}
-
-    async def register_server(self, server_name: str, config: Dict[str, Any]) -> None:
-        """
-        Register an MCP server.
-
-        Args:
-            server_name: Name of the server
-            config: Server configuration
-        """
-        client = MCPClient(config)
-        await client.connect()
-        self.clients[server_name] = client
-
-    async def unregister_server(self, server_name: str) -> None:
-        """
-        Unregister an MCP server.
-
-        Args:
-            server_name: Name of the server
-        """
-        if server_name in self.clients:
-            await self.clients[server_name].disconnect()
-            del self.clients[server_name]
-
-    def get_client(self, server_name: str) -> Optional[MCPClient]:
-        """
-        Get MCP client by server name.
-
-        Args:
-            server_name: Name of the server
-
-        Returns:
-            MCPClient instance or None
-        """
-        return self.clients.get(server_name)
+        self.clients: dict[str, MCPClient] = {}

@@ -163,9 +163,7 @@ async def example_async_invoke():
     )
 
     # Async invoke
-    response = await llm.ainvoke(
-        "Calculate the factorial of 5. Show your reasoning step by step."
-    )
+    response = await llm.ainvoke("Calculate the factorial of 5. Show your reasoning step by step.")
 
     print(f"Answer: {response.content}\n")
 

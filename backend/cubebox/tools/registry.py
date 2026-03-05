@@ -4,7 +4,7 @@ Manages registration and retrieval of tools for agents.
 Supports both built-in tools and MCP-provided tools.
 """
 
-from typing import Dict, List, Optional
+from typing import Any
 
 from langchain_core.tools import StructuredTool
 
@@ -12,10 +12,10 @@ from langchain_core.tools import StructuredTool
 class ToolRegistry:
     """Registry for managing agent tools"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the tool registry"""
-        self._tools: Dict[str, StructuredTool] = {}
-        self._mcp_clients: Dict[str, any] = {}
+        self._tools: dict[str, StructuredTool] = {}
+        self._mcp_clients: dict[str, Any] = {}
 
     def register_tool(self, tool: StructuredTool) -> None:
         """
@@ -26,7 +26,7 @@ class ToolRegistry:
         """
         self._tools[tool.name] = tool
 
-    def register_mcp_server(self, server_name: str, config: Dict) -> None:
+    def register_mcp_server(self, server_name: str, config: dict[str, Any]) -> None:
         """
         Register an MCP server.
 
@@ -37,7 +37,7 @@ class ToolRegistry:
         # TODO: Implement MCP server registration
         pass
 
-    def get_tool(self, name: str) -> Optional[StructuredTool]:
+    def get_tool(self, name: str) -> StructuredTool | None:
         """
         Get a tool by name.
 
@@ -49,7 +49,7 @@ class ToolRegistry:
         """
         return self._tools.get(name)
 
-    def list_tools(self) -> List[StructuredTool]:
+    def list_tools(self) -> list[StructuredTool]:
         """
         List all registered tools.
 
@@ -58,7 +58,7 @@ class ToolRegistry:
         """
         return list(self._tools.values())
 
-    def list_tool_names(self) -> List[str]:
+    def list_tool_names(self) -> list[str]:
         """
         List all registered tool names.
 

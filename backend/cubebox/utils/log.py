@@ -13,6 +13,7 @@ import os
 import re
 import socket
 import sys
+from typing import Any
 
 from loguru import logger
 from yarl import URL
@@ -20,30 +21,29 @@ from yarl import URL
 from cubebox.config import config
 
 
-def get_log_path():
+def get_log_path() -> str:
     """Get the log file path based on hostname"""
     hostname = socket.gethostname()
     if getattr(sys, "frozen", False):
         logdir = os.path.dirname(os.path.realpath(sys.executable))
     else:
-        logdir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        logdir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return f"{logdir}/logs/{hostname}.log"
 
 
-def check_and_replace_angle_brackets(string):
+def check_and_replace_angle_brackets(string: str) -> str:
     """Replace angle brackets with square brackets for safe logging"""
     return re.sub(r"<([^>]*)>", r"[\1]", string)
 
 
-def url_serializer(obj):
+def url_serializer(obj: Any) -> str | None:
     """Serialize URL objects to strings"""
     if isinstance(obj, URL):
         return str(obj)
+    return None
 
 
-def json_formatter(record: dict) -> str:
+def json_formatter(record: dict[str, Any]) -> str:
     """Format log records with color and structure"""
     function_name = check_and_replace_angle_brackets(record["function"])
     message = check_and_replace_angle_brackets(record["message"])
@@ -86,28 +86,27 @@ class InterceptHandler(logging.Handler):
     by loguru for consistent formatting and output.
     """
 
-    def emit(self, record: logging.LogRecord):
+    def emit(self, record: logging.LogRecord) -> None:
         try:
-            level = logger.level(record.levelname).name
+            level: str | int = logger.level(record.levelname).name
         except ValueError:
             level = record.levelno
 
-        frame, depth = sys._getframe(6), 6
+        frame = sys._getframe(6)
+        depth: int = 6
 
         while frame and frame.f_code.co_filename == logging.__file__:
-            frame = frame.f_back
+            frame = frame.f_back  # type: ignore
             depth += 1
 
         should_capture_exception = record.exc_info or (
             record.levelno >= logging.ERROR and sys.exc_info()[0] is not None
         )
 
-        logger.opt(depth=depth, exception=should_capture_exception).log(
-            level, record.getMessage()
-        )
+        logger.opt(depth=depth, exception=should_capture_exception).log(level, record.getMessage())
 
 
-def init(log_path=None, debug=None):
+def init(log_path: str | None = None, debug: bool | None = None) -> None:
     """
     Initialize logging configuration.
 
@@ -138,7 +137,7 @@ def init(log_path=None, debug=None):
 
     diagnose = bool(debug)
     logger.configure(
-        **{
+        **{  # type: ignore
             "handlers": [
                 {
                     "sink": sys.stdout,

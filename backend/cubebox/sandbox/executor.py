@@ -3,15 +3,13 @@
 Handles code execution in isolated sandbox environments.
 """
 
-from typing import Optional
-
 from cubebox.sandbox.config import ExecutionResult, SandboxConfig
 
 
 class SandboxExecutor:
     """Executor for running code in sandboxes"""
 
-    def __init__(self, config: Optional[SandboxConfig] = None):
+    def __init__(self, config: SandboxConfig | None = None):
         """
         Initialize sandbox executor.
 
@@ -20,9 +18,7 @@ class SandboxExecutor:
         """
         self.config = config or SandboxConfig()
 
-    async def execute_code(
-        self, code: str, language: str = "python"
-    ) -> ExecutionResult:
+    async def execute_code(self, code: str, language: str = "python") -> ExecutionResult:
         """
         Execute code in sandbox.
 

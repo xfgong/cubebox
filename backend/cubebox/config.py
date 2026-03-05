@@ -8,21 +8,24 @@ Uses dynaconf for environment-based configuration with support for:
 """
 
 import os
+from pathlib import Path
 
 import dynaconf
+
+# Get the backend directory (where config files are located)
+backend_dir = Path(__file__).parent.parent
 
 # Load configuration based on environment
 env = os.getenv("ENV_FOR_DYNACONF", "development")
 settings_files = [
-    "config.yaml",  # Base configuration
-    f"config.{env}.yaml",
-    f"config.{env}.local.yaml",
+    str(backend_dir / "config.yaml"),  # Base configuration
+    str(backend_dir / f"config.{env}.yaml"),
 ]
 
 config = dynaconf.Dynaconf(
     env=env,
-    envvar_prefix="CUBEBOX",
     environments=True,
+    envvar_prefix="CUBEBOX",
     settings_files=settings_files,
     load_dotenv=True,
 )
