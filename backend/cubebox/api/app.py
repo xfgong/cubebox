@@ -16,7 +16,7 @@ from cubebox.utils import log
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # type: ignore
+async def lifespan(_app: FastAPI):  # type: ignore
     """
     Application lifespan manager.
     Handles startup and shutdown events.
@@ -45,9 +45,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Register exception handlers
+    from cubebox.api.exceptions import register_exception_handlers
+
+    register_exception_handlers(app)
+
     # Register routers
-    # TODO: Add routers as they are implemented
-    # from cubebox.api.routes import api_router
-    # app.include_router(api_router)
+    from cubebox.api.routes.v1 import agents_router
+
+    app.include_router(agents_router, prefix="/api/v1")
 
     return app

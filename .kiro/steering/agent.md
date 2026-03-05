@@ -7,7 +7,7 @@
 
 ### 代码质量
 - 提交代码前必须运行 `make check` 确保代码质量
-- 使用 `make format` 格式化代码（black + isort）
+- 使用 `make format` 格式化代码（ruff format + import sorting）
 - 使用 `make lint` 检查代码规范（ruff）
 - 使用 `make type-check` 进行类型检查（mypy）
 - 已配置 pre-commit 钩子，commit 时会自动检查
@@ -23,7 +23,7 @@
 ### 代码规范
 - 行长度：100 字符
 - Python 版本：3.12+
-- 使用 black 格式化
-- 使用 isort 排序导入
+- 使用 ruff format 格式化（替代 black）
+- 使用 ruff 排序导入（替代 isort）
 - 遵循 ruff 的 linting 规则
 - 类型提示：强制要求（所有函数必须有类型注解）

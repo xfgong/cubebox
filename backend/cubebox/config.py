@@ -20,6 +20,7 @@ env = os.getenv("ENV_FOR_DYNACONF", "development")
 settings_files = [
     str(backend_dir / "config.yaml"),  # Base configuration
     str(backend_dir / f"config.{env}.yaml"),
+    str(backend_dir / f"config.{env}.local.yaml"),
 ]
 
 config = dynaconf.Dynaconf(

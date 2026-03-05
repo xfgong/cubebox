@@ -2,10 +2,11 @@
     "recommendations": [
         "ms-python.python",
         "ms-python.vscode-pylance",
+        "ms-python.mypy-type-checker",
         "ms-python.black-formatter",
         "ms-python.isort",
         "ms-python.debugpy",
-        "charliermarsh.ruff",
+        "loong-vsx.ruff",
         "tamasfe.even-better-toml",
         "redhat.vscode-yaml"
     ]

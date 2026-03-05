@@ -1,6 +1,11 @@
 # Production Configuration
 
-debug: false
-
-api:
-  reload: false
+dynaconf_merge: true
+production:
+  env: production
+  
+  debug: false
+  
+  api:
+    reload: false
+  

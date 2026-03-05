@@ -1,0 +1,14 @@
+# Test Configuration for cubebox
+# Used for E2E testing with real API calls
+
+dynaconf_merge: true
+test:
+  env: test
+  
+  debug: true
+  
+  # API Configuration
+  api:
+    host: "127.0.0.1"
+    port: 8001
+    reload: false

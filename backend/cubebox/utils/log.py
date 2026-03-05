@@ -60,10 +60,10 @@ def json_formatter(record: dict[str, Any]) -> str:
         )
 
     formatting = (
-        f'<green>{record["time"].strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]}</green> | '
-        + f'<level>{record["level"].name: <8}</level> | '
-        + f'<cyan>{record["name"]}</cyan>:<cyan>{function_name}</cyan>:'
-        + f'<cyan>{record["line"]}</cyan> | '
+        f"<green>{record['time'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}</green> | "
+        + f"<level>{record['level'].name: <8}</level> | "
+        + f"<cyan>{record['name']}</cyan>:<cyan>{function_name}</cyan>:"
+        + f"<cyan>{record['line']}</cyan> | "
         + f"<level>{message}</level>"
     )
 

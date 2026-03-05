@@ -4,7 +4,7 @@ help:
 	@echo "Available commands:"
 	@echo "  make install           - Install production dependencies"
 	@echo "  make dev-install       - Install development dependencies"
-	@echo "  make format            - Format code with black and isort"
+	@echo "  make format            - Format code with ruff"
 	@echo "  make lint              - Run ruff linter"
 	@echo "  make type-check        - Run mypy type checker"
 	@echo "  make test              - Run tests"
@@ -21,10 +21,10 @@ dev-install:
 	uv sync --all-extras
 
 format:
-	@echo "Running black..."
-	uv run black cubebox/ scripts/ tests/
-	@echo "Running isort..."
-	uv run isort cubebox/ scripts/ tests/
+	@echo "Running ruff format..."
+	uv run ruff format cubebox/ scripts/ tests/
+	@echo "Running ruff check --select I --fix (import sorting)..."
+	uv run ruff check --select I --fix cubebox/ scripts/ tests/
 	@echo "✓ Code formatted"
 
 lint:
