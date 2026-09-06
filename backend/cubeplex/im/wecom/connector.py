@@ -50,6 +50,19 @@ def _extract_text(body: dict[str, Any]) -> str:
     return ""
 
 
+def _response_error_code(response: dict[str, Any] | None) -> int:
+    if response is None:
+        return 0
+    source = response
+    if "errcode" not in source:
+        body = response.get("body")
+        source = body if isinstance(body, dict) else {}
+    try:
+        return int(source.get("errcode") or 0)
+    except (TypeError, ValueError):
+        return -1
+
+
 def split_proactive_text(text: str, limit: int = PROACTIVE_TEXT_LIMIT) -> list[str]:
     """Split proactive Markdown without exceeding WeCom's character limit."""
     remaining = text
@@ -175,13 +188,15 @@ class WecomConnector:
         if self._gateway is None or not chat_id or not text:
             return None
         if reply_to_id:
-            await self._gateway.send_passive(
+            result = await self._gateway.send_passive(
                 reply_to_id,
                 {"msgtype": "markdown", "markdown": {"content": text[:PROACTIVE_TEXT_LIMIT]}},
                 final=True,
                 skip_if_pending=False,
             )
-            return reply_to_id
+            if not result.get("proactive_required") and not _response_error_code(result):
+                return reply_to_id
+            return await self.send_to_chat(chat_id, None, text)
 
         sent_id: str | None = None
         for chunk in split_proactive_text(text):
