@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -84,10 +84,13 @@ class WecomOpDispatcher:
 
     async def _send_stream_frame(self, content: str, *, final: bool) -> dict[str, Any] | None:
         try:
-            return await self._connector.send_stream(
-                stream_id=self._ensure_stream_id(),
-                content=content,
-                final=final,
+            return cast(
+                dict[str, Any] | None,
+                await self._connector.send_stream(
+                    stream_id=self._ensure_stream_id(),
+                    content=content,
+                    final=final,
+                ),
             )
         except Exception:
             logger.opt(exception=True).warning("[WeCom] stream send failed")
