@@ -20,7 +20,10 @@ from cubeplex.repositories.im_connector import (
     release_command_response_claim,
 )
 
-_COMMAND_LEASE_SECONDS = 30
+# A passive final can spend one ACK window draining an intermediate response,
+# then proactive fallback spends another. Keep the ownership fence well beyond
+# both windows plus database/network overhead.
+_COMMAND_LEASE_SECONDS = 60
 
 
 def _delivery_error_code(response: dict[str, Any]) -> int:
@@ -108,7 +111,11 @@ async def handle_inbound_callback(
     sender = sender if isinstance(sender, dict) else {}
     channel_id = str(body.get("chatid") or sender.get("userid") or "").strip()
     binding_mode = await lookup_binding_mode(session_maker, account.id, channel_id)
-    connector = WecomConnector(bot_id=account.external_account_id, gateway=gateway)
+    connector = WecomConnector(
+        bot_id=account.external_account_id,
+        bot_display_name=str((account.config or {}).get("bot_app_name") or ""),
+        gateway=gateway,
+    )
     event = connector.parse_inbound(raw, binding_mode=binding_mode)
     if event is None:
         return

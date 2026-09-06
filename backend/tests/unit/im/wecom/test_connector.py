@@ -59,15 +59,27 @@ def test_parse_group_scope_and_leading_mention(
     binding_mode: str,
     scope_key: str,
 ) -> None:
-    raw = _frame(chat_id="group-1", chat_type="group", content="@CubePlex  hello")
+    raw = _frame(chat_id="group-1", chat_type="group", content="@Cube Plex  hello")
 
-    event = WecomConnector().parse_inbound(raw, binding_mode=binding_mode)  # type: ignore[arg-type]
+    event = WecomConnector(bot_display_name="Cube Plex").parse_inbound(
+        raw,
+        binding_mode=binding_mode,  # type: ignore[arg-type]
+    )
 
     assert event is not None
     assert event.channel_id == "group-1"
     assert event.scope_key == scope_key
     assert event.scope_kind == ("group" if binding_mode == "isolated" else "channel")
     assert event.text == "hello"
+
+
+def test_parse_group_preserves_a_different_leading_mention() -> None:
+    raw = _frame(chat_id="group-1", chat_type="group", content="@Another Bot hello")
+
+    event = WecomConnector(bot_display_name="Cube.Plex").parse_inbound(raw)
+
+    assert event is not None
+    assert event.text == "@Another Bot hello"
 
 
 def test_parse_mixed_voice_and_quote_fallback() -> None:

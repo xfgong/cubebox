@@ -272,6 +272,7 @@ async def _connect_wecom(
         account = await svc.connect_wecom(
             workspace_id=ctx.workspace_id,
             bot_id=body.bot_id,
+            bot_name=body.bot_name,
             secret=body.secret,
             acting_user_id=acting,
         )

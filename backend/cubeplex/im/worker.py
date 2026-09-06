@@ -214,16 +214,47 @@ async def process_one_queue_item(
     if (
         validate_connection_lease is not None
         and captured["delivery_mode"] in CONNECTION_DELIVERY_MODES
-        and not await validate_connection_lease(captured_item.account_id)
     ):
-        logger.info(
-            "[IM worker] queue item {} lost live connection ownership before start",
-            captured_item.id,
-        )
-        async with session_maker() as session:
-            await rewind_queue_item_no_attempt_charge(session, item_id=captured_item.id)
+        try:
+            lease_is_live = await validate_connection_lease(captured_item.account_id)
+        except Exception:
+            logger.opt(exception=True).warning(
+                "[IM worker] live connection lease validation failed for queue item {}",
+                captured_item.id,
+            )
+            lease_is_live = False
+        if not lease_is_live:
+            logger.info(
+                "[IM worker] queue item {} lost live connection ownership before start",
+                captured_item.id,
+            )
+            async with session_maker() as session:
+                await rewind_queue_item_no_attempt_charge(session, item_id=captured_item.id)
+                await session.commit()
+            return False
+
+    # Attachment resolution and lease validation may perform external I/O. Re-read
+    # the account at the last possible point so a concurrent disable/delete cannot
+    # start a new billable run using credentials the operator has revoked.
+    async with session_maker() as session:
+        live_account = await session.get(IMConnectorAccount, captured_item.account_id)
+        if live_account is None:
+            logger.info(
+                "[IM worker] dropping queue item {} — account {} was deleted",
+                captured_item.id,
+                captured_item.account_id,
+            )
+            return False
+        if not live_account.enabled:
+            logger.info(
+                "[IM worker] dropping queue item {} — account {} was disabled before start",
+                captured_item.id,
+                captured_item.account_id,
+            )
+            await mark_queue_item_completed(session, item_id=captured_item.id)
+            await mark_receipt_failed(session, receipt_id=captured["receipt_id"])
             await session.commit()
-        return False
+            return True
 
     try:
         run_id = await run_manager.start_run(

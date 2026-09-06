@@ -88,6 +88,7 @@ class ConnectWecomAccountIn(BaseModel):
 
     platform: Literal["wecom"] = "wecom"
     bot_id: str = Field(min_length=1, max_length=128)
+    bot_name: str = Field(min_length=1, max_length=128, pattern=r".*\S.*")
     secret: str = Field(min_length=1)
     acting_user_id: str = Field(default="self", min_length=1)
 

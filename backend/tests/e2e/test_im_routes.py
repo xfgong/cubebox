@@ -37,6 +37,7 @@ async def test_workspace_connect_list_delete_wecom_account(
             json={
                 "platform": "wecom",
                 "bot_id": bot_id,
+                "bot_name": "Cube Plex",
                 "secret": "wecom-secret",
             },
         )
@@ -50,7 +51,12 @@ async def test_workspace_connect_list_delete_wecom_account(
 
         duplicate = await async_client.post(
             f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts",
-            json={"platform": "wecom", "bot_id": bot_id, "secret": "different"},
+            json={
+                "platform": "wecom",
+                "bot_id": bot_id,
+                "bot_name": "Cube Plex",
+                "secret": "different",
+            },
         )
         assert duplicate.status_code == 409
         assert probe.await_count == 1
@@ -61,6 +67,7 @@ async def test_workspace_connect_list_delete_wecom_account(
             row for row in listed.json()["accounts"] if row["id"] == account["id"]
         )
         assert listed_account["runtime"]["connection_state"] == "connected"
+        assert listed_account["bot_app_name"] == "Cube Plex"
         assert "wecom-secret" not in listed.text
 
         disabled = await async_client.post(
@@ -112,7 +119,12 @@ async def test_wecom_probe_errors_do_not_create_accounts(
     ):
         response = await async_client.post(
             f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts",
-            json={"platform": "wecom", "bot_id": bot_id, "secret": "never-store"},
+            json={
+                "platform": "wecom",
+                "bot_id": bot_id,
+                "bot_name": "Cube Plex",
+                "secret": "never-store",
+            },
         )
     assert response.status_code == expected_status
     listed = await async_client.get(f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts")

@@ -458,6 +458,7 @@ class IMConnectorService:
         *,
         workspace_id: str,
         bot_id: str,
+        bot_name: str,
         secret: str,
         acting_user_id: str,
     ) -> IMConnectorAccount:
@@ -497,7 +498,7 @@ class IMConnectorService:
                 acting_user_id=acting_user_id,
                 credential_id=credential_id,
                 delivery_mode="stream",
-                config={},
+                config={"bot_app_name": bot_name.strip()},
             )
             self._session.add(account)
             await self._session.commit()

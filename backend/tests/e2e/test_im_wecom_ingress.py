@@ -146,7 +146,8 @@ async def wecom_account(
                 "(id, org_id, workspace_id, platform, external_account_id, acting_user_id, "
                 "credential_id, delivery_mode, enabled, config, created_at, updated_at) VALUES "
                 "(:id, :org, :ws, 'wecom', 'bot-wecomcmd', :uid, :cred, "
-                "'websocket', true, '{}'::jsonb, NOW(), NOW()) ON CONFLICT (id) DO NOTHING"
+                "'websocket', true, '{\"bot_app_name\": \"Cube Plex\"}'::jsonb, "
+                "NOW(), NOW()) ON CONFLICT (id) DO NOTHING"
             ),
             {
                 "id": _ACCOUNT_ID,

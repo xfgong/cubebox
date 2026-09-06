@@ -338,6 +338,153 @@ async def test_failed_live_lease_validation_rewinds_without_attempt_charge(
         assert item.attempts == 0
 
 
+async def test_live_lease_validation_error_rewinds_without_attempt_charge(
+    _seeded: tuple[async_sessionmaker[AsyncSession], IMConnectorAccount],
+) -> None:
+    maker, account = _seeded
+    await ingest_inbound_event(
+        InboundEvent(
+            platform="feishu",
+            account_external_id="cli_wkrA",
+            platform_event_id="ev-validator-error",
+            channel_id="oc_chat",
+            scope_key="u:validator-error",
+            scope_kind="participant",
+            reply_to_id="req-validator-error",
+            inbound_message_id="ev-validator-error",
+            sender_ref="validator-error",
+            sender_open_id="validator-error",
+            text="retry after redis recovers",
+        ),
+        account=account,
+        session_maker=maker,
+    )
+
+    async def broken_validator(_account_id: str) -> bool:
+        raise TimeoutError("redis timed out")
+
+    rm = _FakeRunManager()
+    ran = await process_one_queue_item(
+        session_maker=maker,
+        run_manager=rm,
+        on_run_started=None,
+        lease_seconds=300,
+        deliverable_connection_ids=lambda: {account.id},
+        validate_connection_lease=broken_validator,
+    )
+
+    assert ran is False
+    assert rm.calls == []
+    async with maker() as session:
+        item = (
+            await session.execute(
+                select(IMRunQueueItem).where(IMRunQueueItem.account_id == account.id)
+            )
+        ).scalar_one()
+        assert item.status == "pending"
+        assert item.attempts == 0
+
+
+async def test_account_disabled_during_prestart_validation_never_starts_run(
+    _seeded: tuple[async_sessionmaker[AsyncSession], IMConnectorAccount],
+) -> None:
+    maker, account = _seeded
+    await ingest_inbound_event(
+        InboundEvent(
+            platform="feishu",
+            account_external_id="cli_wkrA",
+            platform_event_id="ev-disable-race",
+            channel_id="oc_chat",
+            scope_key="u:disable-race",
+            scope_kind="participant",
+            reply_to_id="req-disable-race",
+            inbound_message_id="ev-disable-race",
+            sender_ref="disable-race",
+            sender_open_id="disable-race",
+            text="do not bill",
+        ),
+        account=account,
+        session_maker=maker,
+    )
+
+    async def disable_then_validate(_account_id: str) -> bool:
+        async with maker() as session:
+            live_account = await session.get(IMConnectorAccount, account.id)
+            assert live_account is not None
+            live_account.enabled = False
+            await session.commit()
+        return True
+
+    rm = _FakeRunManager()
+    ran = await process_one_queue_item(
+        session_maker=maker,
+        run_manager=rm,
+        on_run_started=None,
+        lease_seconds=300,
+        deliverable_connection_ids=lambda: {account.id},
+        validate_connection_lease=disable_then_validate,
+    )
+
+    assert ran is True
+    assert rm.calls == []
+    async with maker() as session:
+        item = (
+            await session.execute(
+                select(IMRunQueueItem).where(IMRunQueueItem.account_id == account.id)
+            )
+        ).scalar_one()
+        receipt = await session.get(IMWebhookReceipt, item.receipt_id)
+        assert item.status == "completed"
+        assert receipt is not None
+        assert receipt.status == "failed"
+
+
+async def test_account_deleted_during_prestart_validation_never_starts_run(
+    _seeded: tuple[async_sessionmaker[AsyncSession], IMConnectorAccount],
+) -> None:
+    maker, account = _seeded
+    await ingest_inbound_event(
+        InboundEvent(
+            platform="feishu",
+            account_external_id="cli_wkrA",
+            platform_event_id="ev-delete-race",
+            channel_id="oc_chat",
+            scope_key="u:delete-race",
+            scope_kind="participant",
+            reply_to_id="req-delete-race",
+            inbound_message_id="ev-delete-race",
+            sender_ref="delete-race",
+            sender_open_id="delete-race",
+            text="do not bill",
+        ),
+        account=account,
+        session_maker=maker,
+    )
+
+    async def delete_then_validate(_account_id: str) -> bool:
+        async with maker() as session:
+            live_account = await session.get(IMConnectorAccount, account.id)
+            assert live_account is not None
+            await session.delete(live_account)
+            await session.commit()
+        return True
+
+    rm = _FakeRunManager()
+    ran = await process_one_queue_item(
+        session_maker=maker,
+        run_manager=rm,
+        on_run_started=None,
+        lease_seconds=300,
+        deliverable_connection_ids=lambda: {account.id},
+        validate_connection_lease=delete_then_validate,
+    )
+
+    assert ran is False
+    assert rm.calls == []
+    async with maker() as session:
+        assert await session.get(IMConnectorAccount, account.id) is None
+
+
 async def _false() -> bool:
     return False
 
