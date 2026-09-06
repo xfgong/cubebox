@@ -86,6 +86,7 @@ export interface ConnectTeamsAccountIn {
 export interface ConnectWecomAccountIn {
   platform: 'wecom'
   bot_id: string
+  bot_name: string
   secret: string
   acting_user_id?: string
 }

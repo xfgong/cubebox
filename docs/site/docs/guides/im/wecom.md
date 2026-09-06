@@ -13,8 +13,8 @@ need a public callback URL, but the API service must be able to reach
 
 1. In the WeCom desktop client, open **Workbench → AI Bot → Create → Create manually**.
 2. Choose **API mode**, then select **Use long connection**.
-3. Copy the **Bot ID** and reveal and copy the **Secret**. Store the Secret securely; WeCom may
-   only show it once.
+3. Copy the bot's displayed name and **Bot ID**, then reveal and copy the **Secret**. Store the
+   Secret securely; WeCom may only show it once.
 4. Save the bot.
 
 ![Placeholder for the WeCom AI Bot API-mode credential screen](/img/im/wecom-api-mode-placeholder.svg)
@@ -23,7 +23,8 @@ need a public callback URL, but the API service must be able to reach
 
 1. Open **Workspace settings → IM** and choose **Connect → WeCom**.
 2. Complete the prerequisite checklist.
-3. Enter the Bot ID and Secret, then select **Connect**.
+3. Enter the Bot ID, exact displayed bot name, and Secret, then select **Connect**. CubePlex uses
+   the displayed name to remove the bot mention from group messages, including names with spaces.
 
 CubePlex validates the credentials before storing them encrypted. A successful bind opens the
 long connection immediately. WeCom permits one live consumer for a bot; connecting the same bot

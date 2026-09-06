@@ -61,6 +61,7 @@ describe('IM SDK', () => {
     const payload = {
       platform: 'wecom' as const,
       bot_id: 'bot-id',
+      bot_name: 'Cube Plex',
       secret: 'bot-secret',
       acting_user_id: 'self',
     }

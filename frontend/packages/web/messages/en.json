@@ -2603,6 +2603,7 @@
         },
         "field": {
           "botId": "Bot ID",
+          "botName": "Bot name (exactly as shown in WeCom)",
           "secret": "Secret"
         }
       },

@@ -31,6 +31,12 @@ export const wecomDescriptor: PlatformDescriptor = {
       required: true,
     },
     {
+      key: 'bot_name',
+      labelKey: 'im.wizard.wecom.field.botName',
+      type: 'text',
+      required: true,
+    },
+    {
       key: 'secret',
       labelKey: 'im.wizard.wecom.field.secret',
       type: 'password',
@@ -48,7 +54,7 @@ export const wecomDescriptor: PlatformDescriptor = {
       key: 'credentials',
       labelKey: 'im.wizard.step.credentials',
       Component: StepCredentials,
-      canAdvance: (form) => !!(form.bot_id && form.secret),
+      canAdvance: (form) => !!(form.bot_id && form.bot_name?.trim() && form.secret),
     },
     {
       key: 'verify',
@@ -59,6 +65,7 @@ export const wecomDescriptor: PlatformDescriptor = {
   buildPayload: (form) => ({
     platform: 'wecom' as const,
     bot_id: form.bot_id || '',
+    bot_name: form.bot_name?.trim() || '',
     secret: form.secret || '',
     acting_user_id: 'self',
   }),

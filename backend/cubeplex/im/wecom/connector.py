@@ -73,11 +73,13 @@ class WecomConnector:
         self,
         *,
         bot_id: str = "",
+        bot_display_name: str = "",
         gateway: Any = None,
         chat_id: str | None = None,
         reply_req_id: str | None = None,
     ) -> None:
         self._bot_id = bot_id
+        self._bot_display_name = bot_display_name.strip()
         self._gateway = gateway
         self._chat_id = chat_id
         self._reply_req_id = reply_req_id
@@ -135,7 +137,9 @@ class WecomConnector:
         if not chat_id:
             return None
         if is_group:
-            text = re.sub(r"^@\S+\s*", "", text).strip()
+            if self._bot_display_name:
+                mention = rf"^@{re.escape(self._bot_display_name)}(?:\s+|$)"
+                text = re.sub(mention, "", text, count=1).strip()
             if not text:
                 return None
             if binding_mode == "shared":

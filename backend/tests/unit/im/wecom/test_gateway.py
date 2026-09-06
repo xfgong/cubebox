@@ -56,7 +56,9 @@ class _FakeSocket:
         return await self.incoming.get()
 
     async def close(self) -> None:
-        self.closed = True
+        if not self.closed:
+            self.closed = True
+            await self.incoming.put(_ClosedMessage())
 
     async def push(self, payload: dict[str, Any]) -> None:
         await self.incoming.put(_Message(payload))
@@ -452,6 +454,70 @@ async def test_ordinary_disconnect_reconnects_and_updates_runtime_hooks(
     connected.assert_awaited()
     assert connected.await_count == 2
     disconnected.assert_awaited_once()
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_failed_reconnect_handshake_closes_socket_before_next_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gateway_module, "_RECONNECT_BACKOFF", (0.0,))
+    first_socket = _success_socket()
+    failed_socket = _FakeSocket()
+    recovered_socket = _success_socket()
+    session = _CyclingSession([first_socket, failed_socket, recovered_socket])
+    gateway = WecomGateway(
+        bot_id="bot-1",
+        secret="secret-1",
+        session_factory=lambda: session,
+        connect_timeout=0.01,
+        heartbeat_interval=3600,
+    )
+    await gateway.start()
+
+    await first_socket.push_closed()
+    async with asyncio.timeout(0.5):
+        while len(session.urls) < 3 or not gateway.is_open():
+            await asyncio.sleep(0)
+
+    assert failed_socket.closed
+    assert gateway.is_open()
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_write_failure_reconnects_without_stopping_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gateway_module, "_RECONNECT_BACKOFF", (0.0,))
+    first_socket = _success_socket()
+    original_send = first_socket.on_send
+
+    async def fail_ping(payload: dict[str, Any]) -> None:
+        if payload["cmd"] == APP_CMD_PING:
+            raise RuntimeError("ping write failed")
+        assert original_send is not None
+        await original_send(payload)
+
+    first_socket.on_send = fail_ping
+    recovered_socket = _success_socket()
+    session = _CyclingSession([first_socket, recovered_socket])
+    gateway = WecomGateway(
+        bot_id="bot-1",
+        secret="secret-1",
+        session_factory=lambda: session,
+        heartbeat_interval=0.01,
+    )
+    await gateway.start()
+
+    async with asyncio.timeout(0.5):
+        while len(session.urls) < 2 or not gateway.is_open():
+            await asyncio.sleep(0)
+        while not any(frame["cmd"] == APP_CMD_PING for frame in recovered_socket.sent):
+            await asyncio.sleep(0)
+
+    assert first_socket.closed
+    assert gateway.is_open()
     await gateway.stop()
 
 

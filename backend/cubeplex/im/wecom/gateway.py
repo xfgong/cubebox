@@ -275,8 +275,12 @@ class WecomGateway:
                     f"{error_message or 'authentication failed'}"
                 )
         except WecomAuthenticationError:
+            self._authenticated = False
+            await self._close_socket()
             raise
         except Exception as exc:
+            self._authenticated = False
+            await self._close_socket()
             raise WecomUnavailableError("WeCom is unavailable; please try again") from exc
         self._authenticated = True
 
@@ -432,17 +436,21 @@ class WecomGateway:
             while self._running:
                 await asyncio.sleep(self._heartbeat_interval)
                 if self._authenticated and self._socket is not None and not self._socket.closed:
-                    await self._send_json(
-                        {
-                            "cmd": APP_CMD_PING,
-                            "headers": {"req_id": f"ping-{uuid.uuid4().hex}"},
-                            "body": {},
-                        }
-                    )
+                    try:
+                        await self._send_json(
+                            {
+                                "cmd": APP_CMD_PING,
+                                "headers": {"req_id": f"ping-{uuid.uuid4().hex}"},
+                                "body": {},
+                            }
+                        )
+                    except Exception:
+                        logger.opt(exception=True).warning(
+                            "[WeCom] heartbeat failed; closing socket for reconnect"
+                        )
+                        await self._close_socket()
         except asyncio.CancelledError:
             return
-        except Exception:
-            logger.opt(exception=True).warning("[WeCom] heartbeat failed")
 
     async def _mark_disconnected(self) -> None:
         was_authenticated = self._authenticated

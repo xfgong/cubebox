@@ -407,7 +407,9 @@ async def mark_queue_item_completed(
         await session.execute(
             select(IMRunQueueItem).where(IMRunQueueItem.id == item_id)  # type: ignore[arg-type]
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if item is None:
+        return
     item.status = "completed"
     item.claim_lease_expires_at = None
     session.add(item)

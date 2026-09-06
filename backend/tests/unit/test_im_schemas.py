@@ -47,10 +47,28 @@ def test_account_out_embeds_runtime() -> None:
 
 def test_wecom_input_is_discriminated_and_requires_credentials() -> None:
     parsed = TypeAdapter(ConnectIMAccountIn).validate_python(
-        {"platform": "wecom", "bot_id": "bot-1", "secret": "secret-1"}
+        {
+            "platform": "wecom",
+            "bot_id": "bot-1",
+            "bot_name": "Cube Plex",
+            "secret": "secret-1",
+        }
     )
     assert isinstance(parsed, ConnectWecomAccountIn)
     assert parsed.acting_user_id == "self"
+    assert parsed.bot_name == "Cube Plex"
 
     with pytest.raises(ValidationError):
-        TypeAdapter(ConnectIMAccountIn).validate_python({"platform": "wecom", "bot_id": "bot-1"})
+        TypeAdapter(ConnectIMAccountIn).validate_python(
+            {"platform": "wecom", "bot_id": "bot-1", "secret": "secret-1"}
+        )
+
+    with pytest.raises(ValidationError):
+        TypeAdapter(ConnectIMAccountIn).validate_python(
+            {
+                "platform": "wecom",
+                "bot_id": "bot-1",
+                "bot_name": "   ",
+                "secret": "secret-1",
+            }
+        )
