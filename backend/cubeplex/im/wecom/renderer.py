@@ -76,23 +76,40 @@ class WecomOpDispatcher:
     async def _proactive_final(self, text: str) -> bool:
         return bool(await self._connector.send_proactive_text(text))
 
-    async def dispatch_create(self, state: Any) -> bool:
-        del state
+    def _ensure_stream_id(self) -> str:
         if self._stream_id is None:
             self._stream_id = uuid.uuid4().hex
             self._state.card_id = self._stream_id
+        return self._stream_id
+
+    async def _send_stream_frame(self, content: str, *, final: bool) -> dict[str, Any] | None:
+        try:
+            return await self._connector.send_stream(
+                stream_id=self._ensure_stream_id(),
+                content=content,
+                final=final,
+            )
+        except Exception:
+            logger.opt(exception=True).warning("[WeCom] stream send failed")
+            self._passive_expired = True
+            return None
+
+    def _note_stream_response(self, response: dict[str, Any] | None) -> None:
+        if response is None or _error_code(response) in _EXPIRED_CODES:
+            self._passive_expired = True
+
+    async def dispatch_create(self, state: Any) -> bool:
+        del state
+        self._ensure_stream_id()
         if self._started_at is None:
             self._started_at = self._now()
         if not self._state.reply_to_id:
             return True
-        content = _truncate_utf8(_visible_text(self._state) or "Thinking…")
-        response = await self._connector.send_stream(
-            stream_id=self._stream_id,
-            content=content,
+        response = await self._send_stream_frame(
+            _truncate_utf8(_visible_text(self._state) or "Thinking…"),
             final=False,
         )
-        if _error_code(response) in _EXPIRED_CODES:
-            self._passive_expired = True
+        self._note_stream_response(response)
         return True
 
     async def dispatch_stream(self, state: Any, text: str) -> bool:
@@ -101,13 +118,11 @@ class WecomOpDispatcher:
             return True
         if self._stream_id is None:
             return await self.dispatch_create(self._state)
-        response = await self._connector.send_stream(
-            stream_id=self._stream_id,
-            content=_truncate_utf8(_visible_text(self._state)),
+        response = await self._send_stream_frame(
+            _truncate_utf8(_visible_text(self._state)),
             final=False,
         )
-        if _error_code(response) in _EXPIRED_CODES:
-            self._passive_expired = True
+        self._note_stream_response(response)
         return True
 
     async def dispatch_patch(self, state: Any) -> bool:
@@ -115,29 +130,23 @@ class WecomOpDispatcher:
 
     async def dispatch_finalize(self, state: Any) -> bool:
         del state
-        final_text = _truncate_utf8(_visible_text(self._state))
+        visible = _visible_text(self._state)
         now = self._now()
         too_old = self._started_at is not None and now - self._started_at >= _STREAM_MAX_AGE_SECONDS
         if not self._state.reply_to_id or self._passive_expired or too_old:
-            return await self._proactive_final(final_text)
-        if self._stream_id is None:
-            self._stream_id = uuid.uuid4().hex
-            self._state.card_id = self._stream_id
-        response = await self._connector.send_stream(
-            stream_id=self._stream_id,
-            content=final_text,
-            final=True,
-        )
-        if response is not None and response.get("proactive_required"):
-            return await self._proactive_final(final_text)
-        code = _error_code(response)
-        if code in _EXPIRED_CODES:
-            return await self._proactive_final(final_text)
-        return code in {0, 6000}
+            return await self._proactive_final(visible)
+        response = await self._send_stream_frame(_truncate_utf8(visible), final=True)
+        if (
+            response is None
+            or response.get("proactive_required")
+            or _error_code(response) in _EXPIRED_CODES
+        ):
+            return await self._proactive_final(visible)
+        return _error_code(response) in {0, 6000}
 
     async def emergency_text(self, text: str) -> None:
         try:
-            await self._connector.send_proactive_text(_truncate_utf8(text))
+            await self._connector.send_proactive_text(text)
         except Exception:
             logger.opt(exception=True).warning("[WeCom] emergency text send failed")
 

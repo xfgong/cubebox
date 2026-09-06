@@ -211,3 +211,52 @@ async def test_expired_passive_error_falls_back_to_proactive_final() -> None:
     await dispatcher.dispatch_create(state)
     await dispatcher.dispatch_finalize(state)
     assert gateway.proactive[-1][1]["markdown"]["content"] == "complete"
+
+
+class _FailingStreamConnector(_Connector):
+    async def send_stream(
+        self,
+        *,
+        stream_id: str,
+        content: str,
+        final: bool,
+    ) -> dict[str, Any]:
+        del stream_id, content, final
+        raise RuntimeError("WeCom websocket is not connected")
+
+
+@pytest.mark.asyncio
+async def test_stream_transport_failure_keeps_dispatcher_alive_for_proactive_final() -> None:
+    gateway = _Gateway()
+    state = _state()
+    state.card_state.streaming_content = "hello after reconnect"
+    dispatcher = WecomOpDispatcher(
+        connector=_FailingStreamConnector(gateway),
+        state=state,
+        now=lambda: 10.0,
+    )
+
+    assert await dispatcher.dispatch_create(state)
+    assert await dispatcher.dispatch_stream(state, "hello after reconnect")
+    assert await dispatcher.dispatch_finalize(state)
+
+    assert gateway.passive == []
+    assert gateway.proactive[-1][1]["markdown"]["content"] == "hello after reconnect"
+
+
+@pytest.mark.asyncio
+async def test_proactive_final_keeps_full_untruncated_text() -> None:
+    gateway = _Gateway()
+    state = _state(reply_to_id=None)
+    state.card_state.streaming_content = "界" * 8000
+    dispatcher = WecomOpDispatcher(
+        connector=_Connector(gateway),
+        state=state,
+        now=lambda: 10.0,
+    )
+
+    await dispatcher.dispatch_finalize(state)
+
+    content = gateway.proactive[-1][1]["markdown"]["content"]
+    assert content == "界" * 8000
+    assert "[Truncated" not in content

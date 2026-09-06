@@ -167,7 +167,7 @@ class WecomGateway:
         self._inbound_tasks.clear()
         self._fail_waiters(RuntimeError("WeCom gateway stopped"))
         await self._close_resources()
-        await self._call_hook(self._disconnected_hook)
+        await self._call_disconnected_hook()
 
     def is_open(self) -> bool:
         return bool(
@@ -457,7 +457,7 @@ class WecomGateway:
         self._authenticated = False
         self._fail_waiters(RuntimeError("WeCom connection interrupted"))
         if was_authenticated:
-            await self._call_hook(self._disconnected_hook)
+            await self._call_disconnected_hook()
 
     def _fail_waiters(self, error: Exception) -> None:
         for future in list(self._requests.values()):
@@ -489,6 +489,12 @@ class WecomGateway:
         except (TypeError, ValueError):
             return None
         return value if isinstance(value, dict) else None
+
+    async def _call_disconnected_hook(self) -> None:
+        try:
+            await self._call_hook(self._disconnected_hook)
+        except Exception:
+            logger.opt(exception=True).warning("[WeCom] disconnected hook failed")
 
     @staticmethod
     async def _call_hook(hook: AsyncHook | None) -> None:

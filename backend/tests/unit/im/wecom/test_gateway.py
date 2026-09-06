@@ -458,6 +458,41 @@ async def test_ordinary_disconnect_reconnects_and_updates_runtime_hooks(
 
 
 @pytest.mark.asyncio
+async def test_disconnect_hook_failure_still_reconnects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gateway_module, "_RECONNECT_BACKOFF", (0.0,))
+    first_socket = _success_socket()
+    second_socket = _success_socket()
+    session = _CyclingSession([first_socket, second_socket])
+    reconnected = asyncio.Event()
+
+    async def on_connected() -> None:
+        if connected.await_count == 2:
+            reconnected.set()
+
+    connected = AsyncMock(side_effect=on_connected)
+    disconnected = AsyncMock(side_effect=RuntimeError("redis down"))
+    gateway = WecomGateway(
+        bot_id="bot-1",
+        secret="secret-1",
+        session_factory=lambda: session,
+        connected=connected,
+        disconnected=disconnected,
+        heartbeat_interval=3600,
+    )
+    await gateway.start()
+
+    await first_socket.push_closed()
+    await asyncio.wait_for(reconnected.wait(), timeout=0.5)
+
+    assert first_socket.closed
+    assert gateway.is_open()
+    disconnected.assert_awaited_once()
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
 async def test_failed_reconnect_handshake_closes_socket_before_next_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

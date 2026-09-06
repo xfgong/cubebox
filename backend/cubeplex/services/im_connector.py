@@ -474,9 +474,6 @@ class IMConnectorService:
         if existing is not None:
             raise ValueError(f"wecom account already exists for bot_id={bot_id}")
 
-        from cubeplex.im.wecom.gateway import probe_wecom_credentials
-
-        await probe_wecom_credentials(bot_id=bot_id, secret=secret)
         secret_payload = json.dumps({"bot_id": bot_id, "secret": secret, "bot_open_id": bot_id})
         try:
             credential_id = await self._credentials.create(
@@ -498,32 +495,58 @@ class IMConnectorService:
                 acting_user_id=acting_user_id,
                 credential_id=credential_id,
                 delivery_mode="stream",
+                enabled=False,
                 config={"bot_app_name": bot_name.strip()},
             )
             self._session.add(account)
             await self._session.commit()
             await self._session.refresh(account)
-            return account
         except IntegrityError as exc:
             await self._session.rollback()
-            try:
-                await self._credentials.delete(credential_id=credential_id)
-            except Exception:
-                logger.opt(exception=True).warning(
-                    "[IM] orphan WeCom credential {} could not be rolled back",
-                    credential_id,
-                )
+            await self._delete_wecom_credential(credential_id)
             raise ValueError(f"wecom account already exists for bot_id={bot_id}") from exc
         except Exception:
             await self._session.rollback()
-            try:
-                await self._credentials.delete(credential_id=credential_id)
-            except Exception:
-                logger.opt(exception=True).warning(
-                    "[IM] orphan WeCom credential {} could not be rolled back",
-                    credential_id,
-                )
+            await self._delete_wecom_credential(credential_id)
             raise
+
+        from cubeplex.im.wecom.gateway import probe_wecom_credentials
+
+        try:
+            await probe_wecom_credentials(bot_id=bot_id, secret=secret)
+        except Exception:
+            await self._abandon_wecom_reserve(account, credential_id)
+            raise
+
+        account.enabled = True
+        await self._session.commit()
+        await self._session.refresh(account)
+        return account
+
+    async def _delete_wecom_credential(self, credential_id: str) -> None:
+        try:
+            await self._credentials.delete(credential_id=credential_id)
+        except Exception:
+            logger.opt(exception=True).warning(
+                "[IM] orphan WeCom credential {} could not be rolled back",
+                credential_id,
+            )
+
+    async def _abandon_wecom_reserve(
+        self,
+        account: IMConnectorAccount,
+        credential_id: str,
+    ) -> None:
+        try:
+            await self._session.delete(account)
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            logger.opt(exception=True).warning(
+                "[IM] reserved WeCom account {} could not be rolled back",
+                account.id,
+            )
+        await self._delete_wecom_credential(credential_id)
 
     async def _hydrate_teams_bot_info(
         self,

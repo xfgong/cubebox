@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets as _secrets
+import time
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -130,6 +132,63 @@ async def test_wecom_probe_errors_do_not_create_accounts(
     listed = await async_client.get(f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts")
     assert all(row["external_account_id"] != bot_id for row in listed.json()["accounts"])
     assert "never-store" not in response.text
+
+
+async def test_concurrent_wecom_connect_serializes_probe_for_same_bot_id(
+    async_client: httpx.AsyncClient,
+) -> None:
+    from tests.e2e.conftest import DEFAULT_WS_ID
+
+    bot_id = _unique_app_id("wecom-race")
+    first_probe_started = asyncio.Event()
+    release_first_probe = asyncio.Event()
+    probe_calls = 0
+
+    async def delayed_probe(*, bot_id: str, secret: str) -> None:
+        del bot_id, secret
+        nonlocal probe_calls
+        probe_calls += 1
+        if probe_calls == 1:
+            first_probe_started.set()
+            await release_first_probe.wait()
+
+    payload = {
+        "platform": "wecom",
+        "bot_id": bot_id,
+        "bot_name": "Cube Plex",
+        "secret": "wecom-secret",
+    }
+    with (
+        patch(
+            "cubeplex.im.wecom.gateway.probe_wecom_credentials",
+            side_effect=delayed_probe,
+        ),
+        patch("cubeplex.im.wecom.gateway.WecomGateway.start", new_callable=AsyncMock),
+        patch("cubeplex.im.wecom.gateway.WecomGateway.stop", new_callable=AsyncMock),
+        patch("cubeplex.im.wecom.gateway.WecomGateway.is_open", return_value=True),
+    ):
+        first = asyncio.create_task(
+            async_client.post(f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts", json=payload)
+        )
+        await asyncio.wait_for(first_probe_started.wait(), timeout=2)
+        second = asyncio.create_task(
+            async_client.post(f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts", json=payload)
+        )
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and probe_calls == 1 and not second.done():
+            await asyncio.sleep(0.01)
+        assert probe_calls == 1
+        release_first_probe.set()
+        first_response, second_response = await asyncio.gather(first, second)
+
+    statuses = sorted((first_response.status_code, second_response.status_code))
+    assert statuses == [201, 409], (first_response.text, second_response.text)
+    assert probe_calls == 1
+    created = first_response if first_response.status_code == 201 else second_response
+    deleted = await async_client.delete(
+        f"/api/v1/ws/{DEFAULT_WS_ID}/im/accounts/{created.json()['id']}"
+    )
+    assert deleted.status_code == 204
 
 
 @patch("cubeplex.services.im_connector.IMConnectorService._hydrate_bot_info")

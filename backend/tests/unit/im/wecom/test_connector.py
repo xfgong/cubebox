@@ -141,6 +141,32 @@ async def test_send_to_chat_prefers_passive_and_chunks_proactive() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "passive_result",
+    [
+        {"errcode": 846604, "errmsg": "callback expired"},
+        {"proactive_required": True, "reason": "poisoned_req_id"},
+    ],
+)
+async def test_send_to_chat_falls_back_to_proactive_when_passive_cannot_land(
+    passive_result: dict[str, Any],
+) -> None:
+    gateway = AsyncMock()
+    gateway.send_passive.return_value = passive_result
+    gateway.send_proactive.return_value = {"headers": {"req_id": "sent-1"}}
+    connector = WecomConnector(gateway=gateway)
+
+    sent_id = await connector.send_to_chat("chat-1", "reply-1", "please /link")
+
+    assert sent_id == "sent-1"
+    gateway.send_passive.assert_awaited_once()
+    gateway.send_proactive.assert_awaited_once_with(
+        "chat-1",
+        {"msgtype": "markdown", "markdown": {"content": "please /link"}},
+    )
+
+
+@pytest.mark.asyncio
 async def test_native_file_methods_are_explicitly_unsupported() -> None:
     connector = WecomConnector()
 
