@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, cast
+
+from loguru import logger
 
 from cubeplex.im.types import (
     DM_SCOPE_KEY,
     BindingMode,
+    InboundAttachmentRef,
     InboundEvent,
     make_channel_scope,
     make_participant_scope,
 )
+from cubeplex.im.wecom.media import encode_media_handle, outbound_media_type
 
 CALLBACK_COMMANDS = frozenset({"aibot_msg_callback", "aibot_callback"})
 PROACTIVE_TEXT_LIMIT = 4000
@@ -48,6 +53,59 @@ def _extract_text(body: dict[str, Any]) -> str:
     if quote_type in {"text", "voice"}:
         return str(_mapping(quote.get(quote_type)).get("content") or "").strip()
     return ""
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
+def _media_ref(
+    kind: str, payload: dict[str, Any], default_name: str
+) -> InboundAttachmentRef | None:
+    url = str(payload.get("url") or "").strip()
+    if not url:
+        return None
+    aeskey = str(payload.get("aeskey") or "").strip()
+    name = str(payload.get("name") or payload.get("filename") or default_name).strip()
+    return InboundAttachmentRef(
+        kind=kind,
+        filename=name or default_name,
+        mime=None,
+        handle=encode_media_handle(url, aeskey),
+        size_hint=_optional_int(payload.get("filesize") or payload.get("size")),
+    )
+
+
+def _extract_attachments(body: dict[str, Any]) -> list[InboundAttachmentRef]:
+    msgtype = str(body.get("msgtype") or "").lower()
+    refs: list[InboundAttachmentRef] = []
+    if msgtype == "mixed":
+        items = _mapping(body.get("mixed")).get("msg_item")
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("msgtype") or "").lower() != "image":
+                continue
+            ref = _media_ref("image", _mapping(item.get("image")), "image")
+            if ref is not None:
+                refs.append(ref)
+        return refs
+    if msgtype == "image":
+        ref = _media_ref("image", _mapping(body.get("image")), "image")
+        return [ref] if ref is not None else []
+    if msgtype == "file":
+        ref = _media_ref("file", _mapping(body.get("file")), "file")
+        return [ref] if ref is not None else []
+    if msgtype == "video":
+        ref = _media_ref("video", _mapping(body.get("video")), "video")
+        return [ref] if ref is not None else []
+    return []
 
 
 def _response_error_code(response: dict[str, Any] | None) -> int:
@@ -143,7 +201,8 @@ class WecomConnector:
             return None
 
         text = _extract_text(body)
-        if not text:
+        attachments = _extract_attachments(body)
+        if not text and not attachments:
             return None
         is_group = str(body.get("chattype") or "").lower() == "group"
         chat_id = str(body.get("chatid") or sender_id).strip()
@@ -153,7 +212,7 @@ class WecomConnector:
             if self._bot_display_name:
                 mention = rf"^@{re.escape(self._bot_display_name)}(?:\s+|$)"
                 text = re.sub(mention, "", text, count=1).strip()
-            if not text:
+            if not text and not attachments:
                 return None
             if binding_mode == "shared":
                 scope_key = make_channel_scope()
@@ -177,6 +236,7 @@ class WecomConnector:
             sender_ref=sender_id,
             sender_open_id=sender_id,
             text=text,
+            attachments=attachments,
         )
 
     async def send_to_chat(
@@ -224,9 +284,26 @@ class WecomConnector:
         return None
 
     async def send_image(self, *, local_path: str, filename: str) -> bool:
-        del local_path, filename
-        return False
+        return await self.send_file(local_path=local_path, filename=filename, mime="image/png")
 
     async def send_file(self, *, local_path: str, filename: str, mime: str | None) -> bool:
-        del local_path, filename, mime
-        return False
+        if self._gateway is None or not self._chat_id:
+            return False
+        try:
+            data = Path(local_path).read_bytes()
+        except OSError:
+            logger.opt(exception=True).warning("[WeCom] send_file could not read {}", filename)
+            return False
+        media_type = outbound_media_type(filename, mime, len(data))
+        try:
+            media_id = await self._gateway.upload_media(
+                data=data, filename=filename, media_type=media_type
+            )
+            await self._gateway.send_proactive(
+                self._chat_id,
+                {"msgtype": media_type, media_type: {"media_id": media_id}},
+            )
+        except Exception:
+            logger.opt(exception=True).warning("[WeCom] send_file failed for {}", filename)
+            return False
+        return True

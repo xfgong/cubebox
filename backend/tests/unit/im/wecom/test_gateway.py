@@ -17,6 +17,9 @@ from cubeplex.im.wecom.gateway import (
     APP_CMD_RESPONSE,
     APP_CMD_SEND,
     APP_CMD_SUBSCRIBE,
+    APP_CMD_UPLOAD_CHUNK,
+    APP_CMD_UPLOAD_FINISH,
+    APP_CMD_UPLOAD_INIT,
     WECOM_WS_URL,
     WecomAuthenticationError,
     WecomGateway,
@@ -602,6 +605,89 @@ async def test_probe_classifies_auth_rejection_and_closes() -> None:
 
     assert socket.closed
     assert session.closed
+
+
+@pytest.mark.asyncio
+async def test_upload_media_runs_init_chunk_finish() -> None:
+    session, socket = _success_session()
+
+    async def on_send(payload: dict[str, Any]) -> None:
+        command = payload["cmd"]
+        body: dict[str, Any] = {"errcode": 0, "errmsg": "ok"}
+        if command == APP_CMD_UPLOAD_INIT:
+            body["body"] = {"upload_id": "up-1"}
+        elif command == APP_CMD_UPLOAD_FINISH:
+            body["body"] = {"media_id": "media-9"}
+        if command in {
+            APP_CMD_SUBSCRIBE,
+            APP_CMD_UPLOAD_INIT,
+            APP_CMD_UPLOAD_CHUNK,
+            APP_CMD_UPLOAD_FINISH,
+        }:
+            await socket.push({"headers": {"req_id": payload["headers"]["req_id"]}, **body})
+
+    socket.on_send = on_send
+    gateway = WecomGateway(
+        bot_id="bot-1",
+        secret="secret-1",
+        session_factory=lambda: session,
+        heartbeat_interval=3600,
+    )
+    await gateway.start()
+
+    media_id = await gateway.upload_media(
+        data=b"hello-wecom", filename="note.txt", media_type="file"
+    )
+
+    assert media_id == "media-9"
+    commands = [item["cmd"] for item in socket.sent]
+    assert APP_CMD_UPLOAD_INIT in commands
+    assert APP_CMD_UPLOAD_CHUNK in commands
+    assert APP_CMD_UPLOAD_FINISH in commands
+    init = [item for item in socket.sent if item["cmd"] == APP_CMD_UPLOAD_INIT][0]
+    assert init["body"]["filename"] == "note.txt"
+    assert init["body"]["total_chunks"] == 1
+    chunk = [item for item in socket.sent if item["cmd"] == APP_CMD_UPLOAD_CHUNK][0]
+    assert chunk["body"]["upload_id"] == "up-1"
+    assert chunk["body"]["chunk_index"] == 0
+    finish = [item for item in socket.sent if item["cmd"] == APP_CMD_UPLOAD_FINISH][0]
+    assert finish["body"] == {"upload_id": "up-1"}
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_upload_media_does_not_finish_after_chunk_error() -> None:
+    session, socket = _success_session()
+
+    async def on_send(payload: dict[str, Any]) -> None:
+        command = payload["cmd"]
+        if command == APP_CMD_UPLOAD_CHUNK:
+            await socket.push(
+                {
+                    "headers": {"req_id": payload["headers"]["req_id"]},
+                    "errcode": 500,
+                    "errmsg": "chunk failed",
+                }
+            )
+            return
+        body: dict[str, Any] = {"errcode": 0, "errmsg": "ok"}
+        if command == APP_CMD_UPLOAD_INIT:
+            body["body"] = {"upload_id": "up-1"}
+        await socket.push({"headers": {"req_id": payload["headers"]["req_id"]}, **body})
+
+    socket.on_send = on_send
+    gateway = WecomGateway(
+        bot_id="bot-1",
+        secret="secret-1",
+        session_factory=lambda: session,
+        heartbeat_interval=3600,
+    )
+    await gateway.start()
+
+    with pytest.raises(WecomResponseError, match="errcode=500"):
+        await gateway.upload_media(data=b"hello-wecom", filename="note.txt", media_type="file")
+    assert not any(item["cmd"] == APP_CMD_UPLOAD_FINISH for item in socket.sent)
+    await gateway.stop()
 
 
 @pytest.mark.asyncio

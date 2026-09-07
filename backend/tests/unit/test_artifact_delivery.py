@@ -30,5 +30,6 @@ def test_outbound_size_cap_known_and_default() -> None:
     assert outbound_size_cap("slack") == 20 * 1024 * 1024
     assert outbound_size_cap("discord") == 25 * 1024 * 1024
     assert outbound_size_cap("feishu") == 30 * 1024 * 1024
+    assert outbound_size_cap("wecom") == 20 * 1024 * 1024
     # Unknown platform falls back to a conservative default, never 0/unbounded.
     assert outbound_size_cap("nope") == 20 * 1024 * 1024

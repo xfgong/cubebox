@@ -52,6 +52,16 @@ the bot's workspace. Membership is checked again for every message.
 Replies stream into the original WeCom message when its reply window is available. Longer or
 delayed runs fall back to a proactive final message.
 
+Images, files, and videos you send in a **direct chat** are downloaded, decrypted, and handed to
+the agent the same way a web upload is. Mixed image-and-text messages work in groups too. Voice
+messages still arrive as WeCom's transcription only.
+
+When the agent shows a file (`present_file`) or saves a deliverable (`save_artifact`), CubePlex
+uploads it over the bot connection and sends a native WeCom image or file message. Files larger
+than 20 MB, or a failed upload, fall back to a share link. Inbound download URLs expire after
+five minutes; if the bot is already busy with another run past that window, the file is skipped
+and the agent is told it was ignored.
+
 ## Rotate credentials
 
 Delete the WeCom account in CubePlex, generate or copy the current Secret in WeCom, and connect
@@ -61,5 +71,6 @@ restart.
 ## Current limits
 
 This connector supports WeCom AI Bots only. It does not support personal WeChat, callback-mode
-enterprise apps, QR-code setup, native image/file transfer, or interactive in-chat approval and
-question controls. Continue those pending-input steps in the CubePlex web UI.
+enterprise apps, QR-code setup, or interactive in-chat approval and question controls. Continue
+those pending-input steps in the CubePlex web UI. WeCom itself only delivers standalone image,
+file, and video callbacks in direct chats.

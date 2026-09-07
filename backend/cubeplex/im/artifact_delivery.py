@@ -23,6 +23,7 @@ _SIZE_CAPS: dict[str, int] = {
     "slack": 20 * 1024 * 1024,
     "discord": 25 * 1024 * 1024,
     "feishu": 30 * 1024 * 1024,
+    "wecom": 20 * 1024 * 1024,
 }
 _DEFAULT_SIZE_CAP = 20 * 1024 * 1024
 

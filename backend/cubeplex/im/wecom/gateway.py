@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
@@ -21,6 +23,12 @@ APP_CMD_EVENT_CALLBACK = "aibot_event_callback"
 APP_CMD_SEND = "aibot_send_msg"
 APP_CMD_RESPONSE = "aibot_respond_msg"
 APP_CMD_PING = "ping"
+APP_CMD_UPLOAD_INIT = "aibot_upload_media_init"
+APP_CMD_UPLOAD_CHUNK = "aibot_upload_media_chunk"
+APP_CMD_UPLOAD_FINISH = "aibot_upload_media_finish"
+_UPLOAD_CHUNK_SIZE = 512 * 1024
+_UPLOAD_MAX_CHUNKS = 100
+_UPLOAD_MIN_BYTES = 5
 
 _CALLBACK_COMMANDS = frozenset({APP_CMD_CALLBACK, APP_CMD_LEGACY_CALLBACK})
 _RECONNECT_BACKOFF = (2.0, 5.0, 10.0, 30.0, 60.0)
@@ -38,6 +46,11 @@ def _req_id(payload: dict[str, Any]) -> str:
     if not isinstance(headers, dict):
         return ""
     return str(headers.get("req_id") or "").strip()
+
+
+def _mapping_body(payload: dict[str, Any]) -> dict[str, Any]:
+    body = payload.get("body")
+    return body if isinstance(body, dict) else {}
 
 
 def _response_error(payload: dict[str, Any]) -> tuple[int, str]:
@@ -246,6 +259,51 @@ class WecomGateway:
         if not chat_id:
             raise ValueError("chat id is required")
         return await self._send_request(APP_CMD_SEND, {"chatid": chat_id, **body}, prefix="send")
+
+    async def upload_media(self, *, data: bytes, filename: str, media_type: str) -> str:
+        """Three-step WebSocket upload. Returns the temporary ``media_id``."""
+        if len(data) < _UPLOAD_MIN_BYTES:
+            raise ValueError("WeCom media must be at least 5 bytes")
+        total_chunks = max(1, (len(data) + _UPLOAD_CHUNK_SIZE - 1) // _UPLOAD_CHUNK_SIZE)
+        if total_chunks > _UPLOAD_MAX_CHUNKS:
+            raise ValueError(
+                f"WeCom media is too large: {total_chunks} chunks exceeds {_UPLOAD_MAX_CHUNKS}"
+            )
+        init = await self._send_request(
+            APP_CMD_UPLOAD_INIT,
+            {
+                "type": media_type,
+                "filename": filename,
+                "total_size": len(data),
+                "total_chunks": total_chunks,
+                "md5": hashlib.md5(data, usedforsecurity=False).hexdigest(),
+            },
+            prefix="up-init",
+        )
+        upload_id = str(_mapping_body(init).get("upload_id") or "").strip()
+        if not upload_id:
+            raise WecomResponseError("WeCom upload init returned no upload_id")
+        for index in range(total_chunks):
+            start = index * _UPLOAD_CHUNK_SIZE
+            chunk = data[start : start + _UPLOAD_CHUNK_SIZE]
+            await self._send_request(
+                APP_CMD_UPLOAD_CHUNK,
+                {
+                    "upload_id": upload_id,
+                    "chunk_index": index,
+                    "base64_data": base64.b64encode(chunk).decode("ascii"),
+                },
+                prefix="up-chunk",
+            )
+        finish = await self._send_request(
+            APP_CMD_UPLOAD_FINISH,
+            {"upload_id": upload_id},
+            prefix="up-finish",
+        )
+        media_id = str(_mapping_body(finish).get("media_id") or "").strip()
+        if not media_id:
+            raise WecomResponseError("WeCom upload finish returned no media_id")
+        return media_id
 
     async def _open_connection(self) -> None:
         if self._session is None or getattr(self._session, "closed", False):
