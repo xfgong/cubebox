@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
@@ -21,6 +21,10 @@ export function ImLinkPage() {
   const router = useRouter()
   const token = searchParams.get('token')
   const client = useMemo(() => createApiClient(''), [])
+  const confirmation = useRef<{
+    token: string
+    promise: ReturnType<typeof confirmImLink>
+  } | null>(null)
 
   const [status, setStatus] = useState<Status>('verifying')
   const [errorMsg, setErrorMsg] = useState('')
@@ -33,12 +37,20 @@ export function ImLinkPage() {
       setErrorMsg(t('invalidToken'))
       return
     }
-    confirmImLink(client, token)
+    let active = true
+    // Reuse the request when StrictMode replays this effect.
+    if (confirmation.current?.token !== token) {
+      confirmation.current = { token, promise: confirmImLink(client, token) }
+    }
+    setStatus('verifying')
+    confirmation.current.promise
       .then((result) => {
+        if (!active) return
         setStatus('success')
         setPlatform(result.platform)
       })
       .catch((err: unknown) => {
+        if (!active) return
         if (err instanceof ApiError && err.status === 401) {
           const returnUrl = `/im-link?token=${encodeURIComponent(token)}`
           // LoginForm reads ``next``, not ``redirect`` — using the wrong param
@@ -51,6 +63,9 @@ export function ImLinkPage() {
         const key = err instanceof ApiError && err.code ? CODE_TO_KEY[err.code] : undefined
         setErrorMsg(key ? t(key) : t('error'))
       })
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- router/t are stable
   }, [client, token])
 

@@ -64,7 +64,7 @@ The sender sends the bot:
 
 (The Chinese alias `绑定 you@example.com` also works.) The bot replies with a confirmation URL of the form `https://<your-cubeplex-host>/im-link?token=...`. The link carries a short-lived signed token (valid 10 minutes) encoding the claimed email and the target workspace.
 
-The sender opens that link **while logged in to CubePlex**. CubePlex confirms that the logged-in user's email matches the claimed email and that they belong to the workspace, then permanently links the chat identity to the CubePlex account. After that, the sender's messages run as that user without re-linking.
+The sender opens that link and signs in to CubePlex if needed. After sign-in, CubePlex returns to the confirmation page, checks that the user's email matches the claimed email and that they belong to the workspace, then permanently links the chat identity to the CubePlex account. Reopening a still-valid link or submitting the same confirmation more than once succeeds without creating another binding. After that, the sender's messages run as that user without re-linking.
 
 :::tip
 The email you `/link` must be the email of an existing CubePlex account that is already a member of the bot's workspace. Linking does not create accounts or grant membership — it only connects an existing one.

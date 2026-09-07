@@ -13,6 +13,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,27 +78,23 @@ async def _upsert_identity_link(
             detail={"code": "account_not_found", "message": "IM account not found."},
         )
 
-    existing = (
+    link = IMIdentityLink(
+        org_id=account.org_id,
+        workspace_id=account.workspace_id,
+        account_id=claims.account_id,
+        im_user_id=claims.im_user_id,
+        user_id=user_id,
+    )
+    try:
+        # Confirmations can race on first login; let Postgres resolve the unique key.
         await session.execute(
-            select(IMIdentityLink).where(
-                IMIdentityLink.account_id == claims.account_id,  # type: ignore[arg-type]
-                IMIdentityLink.im_user_id == claims.im_user_id,  # type: ignore[arg-type]
+            insert(IMIdentityLink)
+            .values(**link.model_dump())
+            .on_conflict_do_update(
+                index_elements=["account_id", "im_user_id"],
+                set_={"user_id": user_id},
             )
         )
-    ).scalar_one_or_none()
-    if existing is not None:
-        existing.user_id = user_id
-        session.add(existing)
-    else:
-        link = IMIdentityLink(
-            org_id=account.org_id,
-            workspace_id=account.workspace_id,
-            account_id=claims.account_id,
-            im_user_id=claims.im_user_id,
-            user_id=user_id,
-        )
-        session.add(link)
-    try:
         await session.commit()
     except IntegrityError:
         await session.rollback()
