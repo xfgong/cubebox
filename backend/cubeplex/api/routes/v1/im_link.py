@@ -25,7 +25,7 @@ from cubeplex.credentials.dependencies import (
 from cubeplex.credentials.encryption import EncryptionBackend
 from cubeplex.db.session import get_session
 from cubeplex.im.link import LinkClaims, verify_link_token
-from cubeplex.models.im_connector import IMConnectorAccount, IMIdentityLink
+from cubeplex.models.im_connector import IMConnectorAccount, IMIdentityLink, IMLinkAccessRequest
 from cubeplex.models.membership import Membership
 from cubeplex.models.user import User
 
@@ -40,6 +40,10 @@ class _ConfirmResult(BaseModel):
     ok: bool
     platform: str = ""
     account_id: str = ""
+
+
+class _AccessRequestResult(BaseModel):
+    status: str
 
 
 def _get_jwt_secret() -> str:
@@ -159,6 +163,64 @@ async def confirm_im_link(
             )
 
     return _ConfirmResult(ok=True, platform=claims.platform, account_id=claims.account_id)
+
+
+@router.post("/access-requests", response_model=_AccessRequestResult)
+async def create_access_request(
+    body: Annotated[_ConfirmBody, Body()],
+    user: Annotated[User, Depends(current_active_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> _AccessRequestResult:
+    try:
+        claims = verify_link_token(body.token, secret=_get_jwt_secret())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "invalid_token", "message": "Link expired or invalid."},
+        ) from None
+    if user.email.strip().lower() != claims.email:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "email_mismatch", "message": "Email mismatch."},
+        )
+    account = (
+        await session.execute(
+            select(IMConnectorAccount).where(IMConnectorAccount.id == claims.account_id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+    if account is None or account.workspace_id != claims.workspace_id:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "account_not_found", "message": "IM account not found."},
+        )
+    if await _check_membership(session, user.id, claims.workspace_id):
+        return _AccessRequestResult(status="approved")
+    existing = (
+        await session.execute(
+            select(IMLinkAccessRequest).where(
+                IMLinkAccessRequest.workspace_id == claims.workspace_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.account_id == claims.account_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.im_user_id == claims.im_user_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.user_id == user.id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.status == "pending",  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return _AccessRequestResult(status="pending")
+    session.add(
+        IMLinkAccessRequest(
+            org_id=account.org_id,
+            workspace_id=account.workspace_id,
+            account_id=account.id,
+            im_user_id=claims.im_user_id,
+            user_id=user.id,
+            platform=claims.platform,
+            chat_id=claims.chat_id or None,
+        )
+    )
+    await session.commit()
+    return _AccessRequestResult(status="pending")
 
 
 async def _send_feishu_link_success_notice(

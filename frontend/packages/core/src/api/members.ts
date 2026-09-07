@@ -22,6 +22,37 @@ export interface AvailableMember {
   org_role: string
 }
 
+export interface WorkspaceAccessRequest {
+  id: string
+  user_id: string
+  email: string
+  display_name: string | null
+  created_at: string
+}
+
+export async function listWorkspaceAccessRequests(
+  client: ApiClient,
+  wsId: string,
+): Promise<WorkspaceAccessRequest[]> {
+  const res = await client.get(`/api/v1/ws/${wsId}/members/access-requests`)
+  if (!res.ok) throw await toApiError(res)
+  return ((await res.json()) as { requests: WorkspaceAccessRequest[] }).requests
+}
+
+export async function resolveWorkspaceAccessRequest(
+  client: ApiClient,
+  wsId: string,
+  requestId: string,
+  approved: boolean,
+): Promise<void> {
+  const action = approved ? 'approve' : 'reject'
+  const res = await client.post(
+    `/api/v1/ws/${wsId}/members/access-requests/${requestId}/${action}`,
+    {},
+  )
+  if (!res.ok) throw await toApiError(res)
+}
+
 export async function listOrgMembers(client: ApiClient): Promise<OrgMember[]> {
   const res = await client.get('/api/v1/admin/members')
   if (!res.ok) throw await toApiError(res)

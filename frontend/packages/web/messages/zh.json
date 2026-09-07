@@ -1584,6 +1584,7 @@
     "leaveConfirm": "退出 {workspace}？你将失去所有对话和文件的访问权限。",
     "leaveConfirmButton": "退出",
     "accessDenied": "仅工作区管理员可管理成员。",
+    "accessRequests": { "title": "加入申请", "approve": "批准", "reject": "拒绝" },
     "invite": {
       "sectionTitle": "邀请链接",
       "createLink": "创建邀请链接",
@@ -2766,6 +2767,9 @@
       "invalidToken": "链接无效或已过期，请在 IM 中重新发送 /link 命令。",
       "emailMismatch": "请使用 /link 命令中指定的邮箱登录。",
       "notMember": "你不是该工作区的成员，请联系工作区管理员将你添加后重试。",
+      "accessRequired": "你还未加入该工作区。申请加入后即可使用此 Bot。",
+      "requestAccess": "申请加入",
+      "accessPending": "申请已提交，等待工作区管理员批准。",
       "error": "绑定失败，请重试。",
       "goToApp": "进入 CubePlex"
     }

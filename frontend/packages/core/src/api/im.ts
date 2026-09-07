@@ -259,3 +259,12 @@ export async function confirmImLink(
   if (!res.ok) throw await toApiError(res)
   return (await res.json()) as ImLinkConfirmResult
 }
+
+export async function requestImLinkAccess(
+  client: ApiClient,
+  token: string,
+): Promise<{ status: 'pending' | 'approved' }> {
+  const res = await client.post('/api/v1/im/link/access-requests', { token })
+  if (!res.ok) throw await toApiError(res)
+  return (await res.json()) as { status: 'pending' | 'approved' }
+}

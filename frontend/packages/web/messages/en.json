@@ -1584,6 +1584,7 @@
     "leaveConfirm": "Leave {workspace}? You'll lose access to all conversations and files.",
     "leaveConfirmButton": "Leave",
     "accessDenied": "Only workspace admins can manage members.",
+    "accessRequests": { "title": "Access requests", "approve": "Approve", "reject": "Reject" },
     "invite": {
       "sectionTitle": "Invite links",
       "createLink": "Create invite link",
@@ -2766,6 +2767,9 @@
       "invalidToken": "This link is invalid or has expired. Please run /link again in your IM.",
       "emailMismatch": "Please log in with the email specified in the /link command.",
       "notMember": "You are not a member of this workspace. Ask the workspace admin to add you.",
+      "accessRequired": "You are not a member of this workspace. Request access to use this bot.",
+      "requestAccess": "Request access",
+      "accessPending": "Your request was submitted and is waiting for workspace admin approval.",
       "error": "Linking failed. Please try again.",
       "goToApp": "Go to CubePlex"
     }

@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 
 _ISS = "cubeplex:im-link"
-_TTL = timedelta(minutes=10)
+_TTL = timedelta(hours=24)
 
 
 @dataclass(frozen=True, slots=True)

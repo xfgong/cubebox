@@ -1,16 +1,25 @@
 """Workspace member management routes: list / available / add / change-role / remove."""
 
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cubeplex.auth.context import RequestContext
 from cubeplex.auth.dependencies import require_admin, require_member
 from cubeplex.db import get_session
-from cubeplex.models import Membership, Role, User
+from cubeplex.models import (
+    IMIdentityLink,
+    IMLinkAccessRequest,
+    Membership,
+    OrganizationMembership,
+    OrgRole,
+    Role,
+    User,
+)
 from cubeplex.repositories import MembershipRepository, OrganizationMembershipRepository
 from cubeplex.services.avatar_store import resolve_avatar_url
 from cubeplex.utils.time import utc_isoformat
@@ -55,6 +64,18 @@ class AddWsMemberResponse(BaseModel):
 class ChangeWsRoleResponse(BaseModel):
     user_id: str
     role: str
+
+
+class AccessRequestOut(BaseModel):
+    id: str
+    user_id: str
+    email: str
+    display_name: str | None = None
+    created_at: str
+
+
+class AccessRequestListOut(BaseModel):
+    requests: list[AccessRequestOut]
 
 
 @router.get("", response_model=list[WsMemberOut])
@@ -156,6 +177,123 @@ async def add_workspace_member(
     return AddWsMemberResponse(
         user_id=body.user_id, email=email, display_name=display_name, role=body.role
     )
+
+
+@router.get("/access-requests", response_model=AccessRequestListOut)
+async def list_access_requests(
+    ctx: Annotated[RequestContext, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AccessRequestListOut:
+    rows = (
+        await session.execute(
+            select(IMLinkAccessRequest, User)
+            .join(User, cast(Any, IMLinkAccessRequest.user_id) == User.id)
+            .where(
+                IMLinkAccessRequest.workspace_id == ctx.workspace_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.status == "pending",  # type: ignore[arg-type]
+            )
+            .order_by(IMLinkAccessRequest.created_at.asc())  # type: ignore[attr-defined]
+        )
+    ).all()
+    return AccessRequestListOut(
+        requests=[
+            AccessRequestOut(
+                id=request.id,
+                user_id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                created_at=utc_isoformat(request.created_at),
+            )
+            for request, user in rows
+        ]
+    )
+
+
+async def _resolve_access_request(
+    *,
+    request_id: str,
+    approved: bool,
+    ctx: RequestContext,
+    session: AsyncSession,
+) -> None:
+    request = (
+        await session.execute(
+            select(IMLinkAccessRequest).where(
+                IMLinkAccessRequest.id == request_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.workspace_id == ctx.workspace_id,  # type: ignore[arg-type]
+                IMLinkAccessRequest.status == "pending",  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if request is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="access_request_not_found")
+    request.status = "approved" if approved else "rejected"
+    if not approved:
+        await session.commit()
+        return
+    org_membership = (
+        await session.execute(
+            select(OrganizationMembership).where(
+                OrganizationMembership.user_id == request.user_id,  # type: ignore[arg-type]
+                OrganizationMembership.org_id == ctx.org_id,  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if org_membership is None:
+        session.add(
+            OrganizationMembership(
+                user_id=request.user_id,
+                org_id=ctx.org_id,
+                role=OrgRole.MEMBER.value,
+            )
+        )
+    membership = (
+        await session.execute(
+            select(Membership).where(
+                Membership.user_id == request.user_id,  # type: ignore[arg-type]
+                Membership.workspace_id == ctx.workspace_id,  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if membership is None:
+        session.add(
+            Membership(
+                user_id=request.user_id, workspace_id=ctx.workspace_id, role=Role.MEMBER.value
+            )
+        )
+    link = IMIdentityLink(
+        org_id=ctx.org_id,
+        workspace_id=ctx.workspace_id,
+        account_id=request.account_id,
+        im_user_id=request.im_user_id,
+        user_id=request.user_id,
+    )
+    await session.execute(
+        insert(IMIdentityLink)
+        .values(**link.model_dump())
+        .on_conflict_do_update(
+            index_elements=["account_id", "im_user_id"], set_={"user_id": request.user_id}
+        )
+    )
+    await session.commit()
+
+
+@router.post("/access-requests/{request_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
+async def approve_access_request(
+    request_id: str,
+    ctx: Annotated[RequestContext, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    await _resolve_access_request(request_id=request_id, approved=True, ctx=ctx, session=session)
+
+
+@router.post("/access-requests/{request_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+async def reject_access_request(
+    request_id: str,
+    ctx: Annotated[RequestContext, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    await _resolve_access_request(request_id=request_id, approved=False, ctx=ctx, session=session)
 
 
 @router.patch("/{user_id}/role", response_model=ChangeWsRoleResponse)

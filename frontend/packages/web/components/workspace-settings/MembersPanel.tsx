@@ -1,9 +1,16 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Plus } from 'lucide-react'
-import { createApiClient, useMemberStore, useWorkspaceStore } from '@cubeplex/core'
+import {
+  createApiClient,
+  listWorkspaceAccessRequests,
+  resolveWorkspaceAccessRequest,
+  useMemberStore,
+  useWorkspaceStore,
+  type WorkspaceAccessRequest,
+} from '@cubeplex/core'
 import { Button } from '@/components/ui/button'
 import { SETTINGS_CONTENT_WIDTH, SectionHeader } from '@/components/shared/SectionHeader'
 import { cn } from '@/lib/utils'
@@ -22,6 +29,20 @@ export function MembersPanel({ wsId }: MembersPanelProps) {
 
   const { loadAvailable, addWsMember, available } = useMemberStore()
   const [addOpen, setAddOpen] = useState(false)
+  const [requests, setRequests] = useState<WorkspaceAccessRequest[]>([])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    void listWorkspaceAccessRequests(client, wsId).then(setRequests)
+  }, [client, isAdmin, wsId])
+
+  const resolveRequest = useCallback(
+    async (requestId: string, approved: boolean) => {
+      await resolveWorkspaceAccessRequest(client, wsId, requestId, approved)
+      setRequests((current) => current.filter((request) => request.id !== requestId))
+    },
+    [client, wsId],
+  )
 
   const handleOpenAdd = useCallback(async () => {
     await loadAvailable(client, wsId)
@@ -60,6 +81,31 @@ export function MembersPanel({ wsId }: MembersPanelProps) {
           ) : (
             <>
               <WsMembersTable wsId={wsId} />
+              {requests.length > 0 && (
+                <section className="space-y-3 rounded-xl border border-border/70 p-4">
+                  <h2 className="text-sm font-medium">{t('accessRequests.title')}</h2>
+                  {requests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
+                      <span>{request.display_name ?? request.email}</span>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => void resolveRequest(request.id, true)}>
+                          {t('accessRequests.approve')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void resolveRequest(request.id, false)}
+                        >
+                          {t('accessRequests.reject')}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
             </>
           )}
         </div>

@@ -17,6 +17,7 @@ from cubeplex.models.external_identity import ExternalIdentity
 from cubeplex.models.im_connector import (
     IMConnectorAccount,
     IMIdentityLink,
+    IMLinkAccessRequest,
     IMRunQueueItem,
     IMThreadLink,
     IMWebhookReceipt,
@@ -93,6 +94,7 @@ __all__ = [
     "MemoryType",
     "IMConnectorAccount",
     "IMIdentityLink",
+    "IMLinkAccessRequest",
     "IMRunQueueItem",
     "IMThreadLink",
     "IMWebhookReceipt",
