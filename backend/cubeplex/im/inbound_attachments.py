@@ -203,6 +203,22 @@ async def _download_dingtalk(client: Any, ref: InboundAttachmentRef) -> bytes:
     return await _download_url(download_url)
 
 
+async def _download_wecom(ref: InboundAttachmentRef) -> bytes:
+    """GET the short-lived WeCom URL and AES-decrypt with the callback aeskey."""
+    from cubeplex.im.wecom.media import (
+        WecomMediaError,
+        decode_media_handle,
+        decrypt_wecom_media,
+    )
+
+    try:
+        url, aeskey = decode_media_handle(ref.handle)
+        encrypted = await _download_url(url)
+        return decrypt_wecom_media(encrypted, aeskey)
+    except WecomMediaError as exc:
+        raise DownloadError(str(exc)) from exc
+
+
 async def download_for(
     platform: str, client: Any, ref: InboundAttachmentRef, *, message_id: str | None
 ) -> bytes:
@@ -224,6 +240,8 @@ async def download_for(
         return await _download_url(ref.handle)
     if platform == "dingtalk":
         return await _download_dingtalk(client, ref)
+    if platform == "wecom":
+        return await _download_wecom(ref)
     raise DownloadError(f"unsupported platform for inbound download: {platform}")
 
 
@@ -237,7 +255,7 @@ def _client_for_download(
         return str(secrets.get("bot_token") or "")
     if account.platform == "dingtalk":
         return secrets  # _download_dingtalk uses app_key + app_secret to refresh a token
-    return None  # discord: CDN download, no client
+    return None  # discord / wecom: URL download, no client
 
 
 def make_resolver(

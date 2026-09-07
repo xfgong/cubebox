@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
 from cubeplex.im.wecom.connector import WecomConnector
+from cubeplex.im.wecom.media import decode_media_handle
 
 
 def _frame(
@@ -96,9 +98,50 @@ def test_parse_mixed_voice_and_quote_fallback() -> None:
     quote = _frame(msgtype="image", content="")
     quote["body"]["quote"] = {"msgtype": "text", "text": {"content": "quoted"}}
 
-    assert connector.parse_inbound(mixed).text == "first\nsecond"  # type: ignore[union-attr]
+    mixed_event = connector.parse_inbound(mixed)
+    assert mixed_event is not None
+    assert mixed_event.text == "first\nsecond"
+    assert len(mixed_event.attachments) == 1
+    assert mixed_event.attachments[0].kind == "image"
+    assert decode_media_handle(mixed_event.attachments[0].handle) == ("ignored", "")
     assert connector.parse_inbound(voice).text == "transcript"  # type: ignore[union-attr]
     assert connector.parse_inbound(quote).text == "quoted"  # type: ignore[union-attr]
+
+
+def test_parse_image_file_and_video_into_attachments() -> None:
+    connector = WecomConnector(bot_id="bot-1")
+    image = _frame(msgtype="image", content="")
+    image["body"]["image"] = {"url": "https://wx/img", "aeskey": "k1"}
+    file_msg = _frame(msgtype="file", content="")
+    file_msg["body"]["file"] = {"url": "https://wx/file", "aeskey": "k2", "name": "合同.pdf"}
+    video = _frame(msgtype="video", content="")
+    video["body"]["video"] = {"url": "https://wx/vid", "aeskey": "k3"}
+
+    image_event = connector.parse_inbound(image)
+    file_event = connector.parse_inbound(file_msg)
+    video_event = connector.parse_inbound(video)
+
+    assert image_event is not None and image_event.text == ""
+    assert image_event.attachments[0].kind == "image"
+    assert decode_media_handle(image_event.attachments[0].handle) == ("https://wx/img", "k1")
+    assert file_event is not None and file_event.attachments[0].filename == "合同.pdf"
+    assert video_event is not None and video_event.attachments[0].kind == "video"
+
+
+def test_parse_keeps_group_mention_only_image() -> None:
+    mixed = _frame(chat_id="group-1", chat_type="group", msgtype="mixed", content="")
+    mixed["body"]["mixed"] = {
+        "msg_item": [
+            {"msgtype": "text", "text": {"content": "@Cube Plex"}},
+            {"msgtype": "image", "image": {"url": "https://wx/img", "aeskey": "k1"}},
+        ]
+    }
+
+    event = WecomConnector(bot_display_name="Cube Plex").parse_inbound(mixed)
+
+    assert event is not None
+    assert event.text == ""
+    assert event.attachments[0].kind == "image"
 
 
 @pytest.mark.parametrize(
@@ -167,7 +210,7 @@ async def test_send_to_chat_falls_back_to_proactive_when_passive_cannot_land(
 
 
 @pytest.mark.asyncio
-async def test_native_file_methods_are_explicitly_unsupported() -> None:
+async def test_native_file_methods_need_bound_chat_and_gateway() -> None:
     connector = WecomConnector()
 
     assert await connector.upload_image("/tmp/image.png") is None
@@ -177,3 +220,41 @@ async def test_native_file_methods_are_explicitly_unsupported() -> None:
         filename="file.txt",
         mime="text/plain",
     )
+
+
+@pytest.mark.asyncio
+async def test_send_file_uploads_then_sends_proactive(tmp_path: Path) -> None:
+    path = tmp_path / "note.txt"
+    path.write_bytes(b"hello-wecom")
+    gateway = AsyncMock()
+    gateway.upload_media.return_value = "media-1"
+    gateway.send_proactive.return_value = {"errcode": 0}
+    connector = WecomConnector(gateway=gateway, chat_id="user-1")
+
+    ok = await connector.send_file(local_path=str(path), filename="note.txt", mime="text/plain")
+
+    assert ok is True
+    gateway.upload_media.assert_awaited_once()
+    uploaded = gateway.upload_media.await_args
+    assert uploaded.kwargs["filename"] == "note.txt"
+    assert uploaded.kwargs["media_type"] == "file"
+    assert uploaded.kwargs["data"] == b"hello-wecom"
+    gateway.send_proactive.assert_awaited_once_with(
+        "user-1",
+        {"msgtype": "file", "file": {"media_id": "media-1"}},
+    )
+    gateway.send_passive.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_file_returns_false_when_upload_fails(tmp_path: Path) -> None:
+    path = tmp_path / "note.txt"
+    path.write_bytes(b"hello-wecom")
+    gateway = AsyncMock()
+    gateway.upload_media.side_effect = RuntimeError("upload failed")
+    connector = WecomConnector(gateway=gateway, chat_id="user-1")
+
+    assert not await connector.send_file(
+        local_path=str(path), filename="note.txt", mime="text/plain"
+    )
+    gateway.send_proactive.assert_not_awaited()

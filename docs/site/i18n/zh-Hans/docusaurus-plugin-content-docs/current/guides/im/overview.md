@@ -14,7 +14,7 @@ IM 连接器让工作区的智能体能够在聊天平台内回复消息——Fe
 1. **绑定机器人。** 工作区成员将机器人的凭据（应用 ID、密钥、token）注册到工作区。CubePlex 会加密存储它们，并创建一个 **IM 连接器账户**。
 2. **入站消息到达。** 平台将每条消息传递给 CubePlex——要么推送到你在平台控制台中配置的 webhook URL，要么通过 CubePlex 向平台打开的持久 socket 传递（参阅[传递模式](#delivery-modes)）。
 3. **身份验证门控和智能体运行。** CubePlex 确定发送者 _对应哪个 CubePlex 用户_（参阅[身份关联](#identity-linking)），确认其属于该工作区，然后代表该用户启动智能体运行。
-4. **回复。** 智能体的回复会流式返回聊天。Feishu 会将其渲染为实时更新的交互式卡片；其他平台则会将其作为消息发布（平台允许时会原地编辑）。
+4. **回复。** 智能体的回复会流式返回聊天。Feishu 会将其渲染为实时更新的交互式卡片；其他平台则会将其作为消息发布（平台允许时会原地编辑）。智能体展示的文件（`present_file`）或保存的交付物（`save_artifact`）会在 Feishu、Slack、Discord 和企业微信上以原生图片或文件消息发送。交互式网站仍使用分享链接。
 
 机器人会将每条消息作为真实 CubePlex 用户来运行，因此权限、模型访问和工具访问与该用户在 Web 应用中的权限完全一致。如果无法将发送者匹配到工作区成员，机器人会回复无法提供帮助，并且不会启动运行。
 
@@ -29,7 +29,7 @@ CubePlex 为六个平台提供连接器代码。它们的成熟度 **并不** �
 | **DingTalk**        | 可用连接器——基于电子邮箱的自动身份解析；文本 `/new` / `/reset` / `link`。                         | Stream                   | [DingTalk](./dingtalk.md)     |
 | **Microsoft Teams** | 可用连接器——在每个入站活动上验证 Azure Bot Framework JWT；需要可从公网访问的主机。                | Webhook                  | [Microsoft Teams](./teams.md) |
 | **Discord**         | 可用连接器——原生 `/new`、`/reset`、`/link` 斜杠命令。                                             | 网关                     | [Discord](./discord.md)       |
-| **企业微信**        | 可用智能机器人连接器——累积流式回复和手动身份关联。                                                | Stream（WebSocket）      | [企业微信](./wecom.md)        |
+| **企业微信**        | 可用智能机器人连接器——累积流式回复、原生图片/文件传输和手动身份关联。                              | Stream（WebSocket）      | [企业微信](./wecom.md)        |
 
 各平台支持的命令不同——参阅[对话命令](#conversation-commands)。
 
