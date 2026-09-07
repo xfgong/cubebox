@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
-import { ApiError, createApiClient, confirmImLink } from '@cubeplex/core'
+import { ApiError, createApiClient, confirmImLink, requestImLinkAccess } from '@cubeplex/core'
 
-type Status = 'verifying' | 'success' | 'error'
+type Status = 'verifying' | 'success' | 'requestAccess' | 'pending' | 'error'
 type ErrorKey = 'invalidToken' | 'emailMismatch' | 'notMember' | 'error'
 
 const CODE_TO_KEY: Record<string, ErrorKey> = {
@@ -59,6 +59,10 @@ export function ImLinkPage() {
           router.replace(`/login?next=${encodeURIComponent(returnUrl)}`)
           return
         }
+        if (err instanceof ApiError && err.code === 'not_member') {
+          setStatus('requestAccess')
+          return
+        }
         setStatus('error')
         const key = err instanceof ApiError && err.code ? CODE_TO_KEY[err.code] : undefined
         setErrorMsg(key ? t(key) : t('error'))
@@ -82,6 +86,33 @@ export function ImLinkPage() {
         </Link>
       </div>
     )
+  }
+
+  if (status === 'requestAccess') {
+    return (
+      <div className="text-center space-y-3">
+        <p className="text-sm text-muted-foreground">{t('accessRequired')}</p>
+        <button
+          type="button"
+          className="text-sm font-medium text-primary underline"
+          onClick={() => {
+            if (!token) return
+            requestImLinkAccess(client, token)
+              .then((result) => setStatus(result.status === 'approved' ? 'success' : 'pending'))
+              .catch((err: unknown) => {
+                setErrorMsg(err instanceof Error ? err.message : t('error'))
+                setStatus('error')
+              })
+          }}
+        >
+          {t('requestAccess')}
+        </button>
+      </div>
+    )
+  }
+
+  if (status === 'pending') {
+    return <p className="text-center text-sm text-muted-foreground">{t('accessPending')}</p>
   }
 
   return (

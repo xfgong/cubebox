@@ -32,6 +32,7 @@ function VerifyOtpForm() {
     const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/'
     if (
       me?.needs_onboarding &&
+      !safeNext.startsWith('/im-link') &&
       !safeNext.startsWith('/orgs/invites/accept') &&
       !safeNext.startsWith('/invite')
     ) {

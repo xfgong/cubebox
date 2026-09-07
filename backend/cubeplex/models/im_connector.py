@@ -20,6 +20,7 @@ from cubeplex.models.mixins import CubeplexBase, OrgScopedMixin
 from cubeplex.models.public_id import (
     PREFIX_IM_CONNECTOR_ACCOUNT,
     PREFIX_IM_IDENTITY_LINK,
+    PREFIX_IM_LINK_ACCESS_REQUEST,
     PREFIX_IM_RUN_QUEUE_ITEM,
     PREFIX_IM_THREAD_LINK,
     PREFIX_IM_WEBHOOK_RECEIPT,
@@ -109,6 +110,26 @@ class IMIdentityLink(CubeplexBase, OrgScopedMixin, table=True):
     )
     im_user_id: str = Field(max_length=128)
     user_id: str = Field(foreign_key="users.id", max_length=20)
+
+
+class IMLinkAccessRequest(CubeplexBase, OrgScopedMixin, table=True):
+    """A workspace-access request started from a signed IM link."""
+
+    _PREFIX: ClassVar[str] = PREFIX_IM_LINK_ACCESS_REQUEST
+    __tablename__ = "im_link_access_requests"
+    __table_args__ = (
+        Index("ix_im_link_access_request_workspace_status", "workspace_id", "status"),
+        Index("ix_im_link_access_request_user", "user_id"),
+    )
+
+    account_id: str = Field(
+        foreign_key="im_connector_accounts.id", max_length=20, index=True, ondelete="CASCADE"
+    )
+    im_user_id: str = Field(max_length=128)
+    user_id: str = Field(foreign_key="users.id", max_length=20)
+    platform: str = Field(max_length=16)
+    chat_id: str | None = Field(default=None, max_length=128, nullable=True)
+    status: str = Field(default="pending", max_length=16)
 
 
 class IMWebhookReceipt(CubeplexBase, OrgScopedMixin, table=True):

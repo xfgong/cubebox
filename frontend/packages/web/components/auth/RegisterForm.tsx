@@ -48,7 +48,7 @@ export function RegisterForm({ nextPath = '/' }: { nextPath?: string }) {
       const me = useAuthStore.getState().user
       if (isInviteAcceptPath(safeNext)) {
         router.push(safeNext)
-      } else if (me?.needs_onboarding) {
+      } else if (me?.needs_onboarding && !safeNext.startsWith('/im-link')) {
         router.push('/onboarding')
       } else {
         router.push(
