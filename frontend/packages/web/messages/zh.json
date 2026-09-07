@@ -2603,7 +2603,8 @@
         },
         "field": {
           "botId": "Bot ID",
-          "botName": "机器人名称（与企业微信中显示的完全一致）",
+          "botName": "机器人名称",
+          "botNameHint": "须与企业微信中显示的名称完全一致",
           "secret": "Secret"
         }
       },

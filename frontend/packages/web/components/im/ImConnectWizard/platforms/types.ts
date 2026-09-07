@@ -12,6 +12,9 @@ export type FieldDef = {
   options?: { value: string; labelKey: string }[]
   placeholder?: string
   default?: string
+  /** Span the full wizard row instead of sharing a two-column cell. */
+  fullWidth?: boolean
+  descriptionKey?: string
 }
 
 export type PrereqItem = {
