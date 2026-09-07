@@ -23,6 +23,14 @@ function page() {
 
 const success = () => Response.json({ ok: true, platform: 'wecom', account_id: 'account' })
 
+function pendingResponse() {
+  let resolve!: (response: Response) => void
+  const promise = new Promise<Response>((complete) => {
+    resolve = complete
+  })
+  return { promise, resolve }
+}
+
 describe('IM link confirmation lifecycle', () => {
   beforeEach(() => {
     navigation.token = 'first'
@@ -34,7 +42,7 @@ describe('IM link confirmation lifecycle', () => {
   })
 
   it('submits once under StrictMode and still shows the completed binding', async () => {
-    const response = Promise.withResolvers<Response>()
+    const response = pendingResponse()
     const fetch = vi.fn().mockReturnValue(response.promise)
     vi.stubGlobal('fetch', fetch)
     render(page())
@@ -46,7 +54,7 @@ describe('IM link confirmation lifecycle', () => {
   })
 
   it('ignores an old failure after a different token has succeeded', async () => {
-    const oldResponse = Promise.withResolvers<Response>()
+    const oldResponse = pendingResponse()
     const fetch = vi.fn().mockReturnValue(oldResponse.promise)
     vi.stubGlobal('fetch', fetch)
     const view = render(page())
