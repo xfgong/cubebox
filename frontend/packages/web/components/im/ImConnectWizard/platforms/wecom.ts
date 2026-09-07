@@ -29,18 +29,22 @@ export const wecomDescriptor: PlatformDescriptor = {
       labelKey: 'im.wizard.wecom.field.botId',
       type: 'text',
       required: true,
-    },
-    {
-      key: 'bot_name',
-      labelKey: 'im.wizard.wecom.field.botName',
-      type: 'text',
-      required: true,
+      fullWidth: true,
     },
     {
       key: 'secret',
       labelKey: 'im.wizard.wecom.field.secret',
       type: 'password',
       required: true,
+      fullWidth: true,
+    },
+    {
+      key: 'bot_name',
+      labelKey: 'im.wizard.wecom.field.botName',
+      type: 'text',
+      required: true,
+      fullWidth: true,
+      descriptionKey: 'im.wizard.wecom.field.botNameHint',
     },
   ],
   steps: [
