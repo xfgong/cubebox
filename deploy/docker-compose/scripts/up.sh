@@ -8,7 +8,7 @@ DIR="$ROOT/deploy/docker-compose"
 cd "$DIR"
 
 missing=0
-for f in .env config/config.production.local.yaml config/config.production.secrets.yaml; do
+for f in .env config/config.production.local.yaml config/config.production.secrets.yaml config/opensandbox.toml; do
   if [[ ! -f "$f" ]]; then
     echo "MISSING: $f"
     echo "  cp ${f}.example $f && \$EDITOR $f"

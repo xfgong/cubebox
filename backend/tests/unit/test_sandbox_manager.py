@@ -1,6 +1,28 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from cubeplex.sandbox.manager import SandboxManager
+
+
+@pytest.fixture(autouse=True)
+def _sandbox_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give manager-only tests the required OpenSandbox startup settings."""
+    from cubeplex.config import config
+
+    original_get = config.get
+    required_values = {
+        "sandbox.domain": "opensandbox.example:8090",
+        "sandbox.image": "registry.example/cubeplex-sandbox:latest",
+        "sandbox.api_key": "test-key",
+    }
+
+    def get(key: str, default: object = None, **kwargs: object) -> object:
+        if key.startswith("sandbox."):
+            return required_values.get(key, default)
+        return original_get(key, default, **kwargs)
+
+    monkeypatch.setattr(config, "get", get)
 
 
 def test_build_user_volume_uses_stable_non_colliding_name(mock_encryption_backend):

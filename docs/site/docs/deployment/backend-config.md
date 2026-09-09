@@ -48,7 +48,7 @@ production:
 
 - **Docker Compose** mounts `config.production.local.yaml` and
   `config.production.secrets.yaml` straight into the backend container. You
-  edit the files directly (see the [Compose guide](./docker-compose.md#4-configure-env--two-yaml-files)).
+  edit the files directly (see the [Compose guide](./docker-compose.md)).
 - **Kubernetes** renders them for you: `backend.configOverrides` in
   `values.local.yaml` becomes the local (ConfigMap) file, and
   `backend.secrets` becomes the secrets (Secret) file. You never write the YAML
@@ -204,7 +204,7 @@ sandbox:
   image: "ghcr.io/cubeplexai/cubeplex-sandbox:v0.7.2"
   api_key: "…"
   use_server_proxy: false # true when the backend can't reach sandbox pods/ports directly
-  secure_access: true     # false for docker-runtime OpenSandbox
+  secure_access: false    # required for docker-runtime OpenSandbox
   ttl: 1800               # idle seconds before cleanup
   ready_timeout: 300      # wait for a sandbox to become ready (covers a cold pull)
   run_user: "cubeplex"    # agent shell identity inside the container
@@ -217,9 +217,9 @@ sandbox:
 
 | Key | Default | Notes |
 |---|---|---|
-| `sandbox.enabled` | `true` | When off, chat works but tool calls fail. |
+| `sandbox.enabled` | `true` | Required. The backend refuses to start if it is not `true`. |
 | `sandbox.use_server_proxy` | `true` | Set `false` for direct pod access; `true` for Docker-bridge / isolated networks. |
-| `sandbox.secure_access` | `true` | Kubernetes ingress-gateway signed URLs. **Must be `false`** on docker-runtime OpenSandbox. |
+| `sandbox.secure_access` | `false` | Enables Kubernetes ingress-gateway signed URLs when `true`. **Must be `false`** on docker-runtime OpenSandbox. |
 | `sandbox.ttl` | `1800` | Idle sandbox is reaped after 30 min. |
 | `sandbox.run_user` / `run_uid` / `run_gid` | `cubeplex` / `1000` / `1000` | Agent commands and uploaded files run as this user. Match the sandbox image. Set `run_uid` to `null` to keep the previous root default. Browser stack still starts as root. |
 | `sandbox.resource.cpu` / `memory` | `2` / `4Gi` | Per-sandbox limits. |

@@ -31,12 +31,10 @@ backend:
   replicaCount: 1
   service:
     port: 8000
-  # Sandbox runtime flags (independent of whether the OpenSandbox subchart
-  # is deployed). Leave `enabled` unset to follow opensandbox.enabled; set
-  # to true to point at an external sandbox (backend.secrets.sandbox.domain).
-  sandbox: {}
-    # enabled: true
-    # use_server_proxy: false
+  # Sandbox execution is required. Use an external OpenSandbox endpoint by
+  # setting opensandbox.enabled=false and backend.secrets.sandbox.domain.
+  sandbox:
+    use_server_proxy: false
   resources:
     requests:
       cpu: "200m"

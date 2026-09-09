@@ -44,7 +44,7 @@ production:
 
 - **Docker Compose** 直接把 `config.production.local.yaml` 和
   `config.production.secrets.yaml` 挂载进后端容器。你直接编辑文件（见
-  [Compose 指南](./docker-compose.md#4-配置env--两个-yaml-文件)）。
+  [Compose 指南](./docker-compose.md)）。
 - **Kubernetes** 帮你渲染：`values.local.yaml` 里的 `backend.configOverrides`
   变成 local（ConfigMap）文件，`backend.secrets` 变成 secrets（Secret）文件。
   你不用手写 YAML——见 [Kubernetes 指南](./kubernetes.md#42-backend-非密钥配置)。
@@ -194,7 +194,7 @@ sandbox:
   image: "ghcr.io/cubeplexai/cubeplex-sandbox:v0.7.2"
   api_key: "…"
   use_server_proxy: false # 后端无法直连 sandbox pod/端口时设为 true
-  secure_access: true     # docker-runtime OpenSandbox 下设为 false
+  secure_access: false    # docker-runtime OpenSandbox 下必须为 false
   ttl: 1800               # 空闲多少秒后清理
   ready_timeout: 300      # 等待 sandbox 就绪（覆盖冷拉镜像）
   resource:
@@ -204,9 +204,9 @@ sandbox:
 
 | Key | 默认 | 说明 |
 |---|---|---|
-| `sandbox.enabled` | `true` | 关闭时对话可用，但工具调用失败。 |
+| `sandbox.enabled` | `true` | 必填。不是 `true` 时 backend 会拒绝启动。 |
 | `sandbox.use_server_proxy` | `true` | 直连 pod 设 `false`；Docker 桥接 / 隔离网络设 `true`。 |
-| `sandbox.secure_access` | `true` | Kubernetes ingress 网关的签名 URL。docker-runtime OpenSandbox 下**必须 `false`**。 |
+| `sandbox.secure_access` | `false` | 设为 `true` 时启用 Kubernetes ingress 网关签名 URL。docker-runtime OpenSandbox 下**必须 `false`**。 |
 | `sandbox.ttl` | `1800` | 空闲 30 分钟后回收。 |
 | `sandbox.resource.cpu` / `memory` | `2` / `4Gi` | 单个 sandbox 的限额。 |
 

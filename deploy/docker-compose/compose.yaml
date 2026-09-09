@@ -9,7 +9,8 @@
 #   cp .env.example .env
 #   cp config/config.production.local.yaml.example config/config.production.local.yaml
 #   cp config/config.production.secrets.yaml.example config/config.production.secrets.yaml
-#   $EDITOR .env config/config.production.{local,secrets}.yaml
+#   cp config/opensandbox.toml.example config/opensandbox.toml
+#   $EDITOR .env config/config.production.{local,secrets}.yaml config/opensandbox.toml
 #   docker compose up -d
 #
 # All services share the default network. Backend is reachable as
@@ -131,6 +132,8 @@ services:
         condition: service_healthy
       backend-migrate:
         condition: service_completed_successfully
+      opensandbox-server:
+        condition: service_healthy
     environment:
       ENV_FOR_DYNACONF: production
     volumes:
@@ -138,12 +141,36 @@ services:
       - ./config/config.production.secrets.yaml:/app/config.production.secrets.yaml:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2).status == 200 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
+
+  # OpenSandbox is required for agent tool execution. It creates sibling
+  # sandbox containers through the host Docker daemon; do not expose this API
+  # outside the private compose network.
+  opensandbox-server:
+    image: ${OPENSANDBOX_IMAGE:-opensandbox/server:v0.2.2}
+    <<: *restart-policy
+    environment:
+      SANDBOX_CONFIG_PATH: /etc/opensandbox/config.toml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/opensandbox.toml:/etc/opensandbox/config.toml:ro
+    ports:
+      - "${OPENSANDBOX_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/health', timeout=2).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   frontend:
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPO:-cubeplexai}/cubeplex-frontend:${FRONTEND_TAG:?set FRONTEND_TAG in .env}

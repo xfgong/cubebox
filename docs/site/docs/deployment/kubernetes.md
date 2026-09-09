@@ -6,7 +6,7 @@ title: Kubernetes (Helm)
 # CubePlex on Kubernetes
 
 A single `helm upgrade --install` deploys CubePlex (backend + frontend +
-Postgres + Redis + rustfs, optionally the alibaba OpenSandbox umbrella) to
+Postgres + Redis + rustfs + the alibaba OpenSandbox umbrella) to
 an existing Kubernetes cluster.
 
 The backend Deployment requires two standard Kubernetes Pod features: **init
@@ -57,7 +57,7 @@ Namespace: cubeplex
 │    Next.js standalone runtime (node server.js)                │
 ├──────────────┬─────────────┬───────────────┬──────────────────┤
 │ postgres SS  │ redis SS    │ rustfs SS     │ opensandbox      │
-│  + PVC       │  + PVC      │  + PVC + Job  │ (optional        │
+│  + PVC       │  + PVC      │  + PVC + Job  │ (bundled         │
 │              │             │  (bucket init)│  subchart)       │
 └──────────────┴─────────────┴───────────────┴──────────────────┘
                                             │
@@ -280,10 +280,11 @@ that's rejected, and rejected loudly: it fails the pod at startup
 visible immediately in `kubectl get pods` instead of surfacing later as a
 `no_default_preset` 500 on the first chat message.
 
-### 4.5 Sandbox (optional)
+### 4.5 Required OpenSandbox provider
 
-The sandbox is the container runtime where agent tools (bash, read,
-…) execute. Disabled = agents can still chat but tool calls fail.
+OpenSandbox is the container runtime where agent tools (bash, read, …)
+execute. The backend requires it at startup and rejects incomplete
+configuration.
 
 ```yaml
 backend:
@@ -293,17 +294,15 @@ backend:
       # image defaults to cubeplex-sandbox:v<chart version>; set only to override
       api_key: "..."
   sandbox:
-    enabled: true                       # flip this on if using an external sandbox
     use_server_proxy: false             # true when the cluster can't reach sandbox pods directly
 ```
 
-Three typical layouts:
+Two supported layouts:
 
 | Layout | `values.local.yaml` |
 |---|---|
 | Bundled OpenSandbox subchart | `opensandbox.enabled: true`; `backend.secrets.sandbox.domain` points at `opensandbox-server.opensandbox-system.svc.cluster.local:80` (the vendored subchart hardcodes `fullnameOverride`/`namespaceOverride` — no release-name prefix, no `cubeplex` namespace, port 80 not 8090) |
-| External OpenSandbox | `opensandbox.enabled: false`; `backend.sandbox.enabled: true`; `backend.secrets.sandbox.domain` points at the external host |
-| No sandbox (chat-only) | `opensandbox.enabled: false`; leave `backend.sandbox.enabled` unset (it follows `opensandbox.enabled` → false) |
+| External OpenSandbox | `opensandbox.enabled: false`; `backend.secrets.sandbox.domain` points at the external host |
 
 The backend defaults to `sandbox.secure_access: false`. Browser and terminal
 panels do **not** go through the OpenSandbox `gateway`/`ingress` component —
@@ -453,10 +452,10 @@ rustfs:
     storageClass: "fast-ssd"
 ```
 
-### 4.9 OpenSandbox subchart (optional)
+### 4.9 OpenSandbox subchart
 
-The chart can bundle alibaba's OpenSandbox umbrella (controller + server)
-under the same release. Its controller / server / execd / egress images default
+The chart bundles alibaba's OpenSandbox umbrella (controller + server) under
+the same release by default. Its controller / server / execd / egress images default
 to Docker Hub (`opensandbox/*`), which the cluster nodes need to be able to
 pull. For mainland-China clusters, override each with the
 `sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/` prefix (same
@@ -464,8 +463,7 @@ image names and tags) in the vendored subchart values.
 
 ```yaml
 opensandbox:
-  enabled: false                # default in values.yaml is true; turn off
-                                 # when using an external sandbox
+  enabled: false                # use an external, already running OpenSandbox
 ```
 
 ### 4.10 Egress secret-injection (optional)
@@ -930,13 +928,16 @@ backend:
           models:
             - { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", input: ["text", "image"],
                 context_window: 128000, max_tokens: 16384 }
+    sandbox:
+      domain: "opensandbox-server.opensandbox-system.svc.cluster.local:80"
+      api_key: "<same value as the bundled OpenSandbox server API key>"
 
 postgres: { auth: { password: "<openssl rand -hex 16>" } }
 redis:    { auth: { password: "<openssl rand -hex 16>" } }
 rustfs:   { auth: { secretKey: "<openssl rand -hex 16>" } }
 
 opensandbox:
-  enabled: false
+  enabled: true
 ```
 
 A fuller annotated template lives at

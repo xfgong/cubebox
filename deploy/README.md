@@ -46,7 +46,6 @@ deploy/
     ├── README.md
     ├── INSTALL.md
     ├── compose.yaml
-    ├── compose.opensandbox.yaml   # optional: sandbox execution overlay
     ├── compose.docling.yaml       # optional: document parsing overlay
     ├── config/
     └── scripts/

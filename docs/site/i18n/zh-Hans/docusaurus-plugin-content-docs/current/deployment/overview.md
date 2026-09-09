@@ -14,7 +14,7 @@ backend / frontend 容器镜像**——只是编排方式不同。
 |---|---|---|
 | 适用场景 | 单机部署——快速自托管、小团队、内部演示 | 多节点集群、生产规模、自动扩缩容 |
 | 编排方式 | `docker compose up -d` | `helm upgrade --install` |
-| 内置基础设施 | Postgres、Redis、rustfs（S3 兼容对象存储） | Postgres、Redis、rustfs，可选 alibaba OpenSandbox 全家桶 |
+| 内置基础设施 | Postgres、Redis、rustfs（S3 兼容对象存储）、OpenSandbox | Postgres、Redis、rustfs、alibaba OpenSandbox 全家桶 |
 | 指南 | [Docker Compose 安装指南](./docker-compose.md) | [Kubernetes 安装指南](./kubernetes.md) |
 
 如果不确定选哪个，从 Docker Compose 开始——它更简单，除了跨多机的水平扩展外，
@@ -22,13 +22,12 @@ backend / frontend 容器镜像**——只是编排方式不同。
 
 ## Agent 沙箱
 
-CubePlex 在沙箱里执行 agent 的工具调用（bash、文件读写等）。基础安装只提供
-对话能力，**在配置好沙箱之前工具调用都会失败**——所以大多数部署都会需要它。
-两篇指南都把它作为清晰标注的步骤：内置的 alibaba
-[OpenSandbox](https://github.com/alibaba/OpenSandbox)（Kubernetes 上是子 chart，
-Docker Compose 上是 overlay），或一个外部沙箱端点。沙箱镜像默认走 Docker Hub
-（`opensandbox/*`）和 GHCR（`ghcr.io/cubeplexai/cubeplex-sandbox`）；国内镜像源
-在各指南中就地标注。
+CubePlex 在 [OpenSandbox](https://github.com/alibaba/OpenSandbox) 沙箱里执行
+agent 的工具调用（bash、文件读写等）。它是每种部署方式的必需组成部分：Docker
+Compose 会部署该服务，Helm 默认打包它。Helm 也可以改为连接外部托管的
+OpenSandbox，但 backend 始终要求非空的 endpoint、沙箱镜像和 API key。沙箱镜像
+默认走 Docker Hub（`opensandbox/*`）和 GHCR（`ghcr.io/cubeplexai/cubeplex-sandbox`）；
+国内镜像源在各指南中就地标注。
 
 ## LLM Provider 配置
 

@@ -6,7 +6,7 @@ title: Docker Compose
 # CubePlex on Docker Compose
 
 `docker compose up -d` deploys CubePlex (backend + frontend + Postgres +
-Redis + rustfs S3 store) on a single host. It uses the same container
+Redis + rustfs S3 store + OpenSandbox) on a single host. It uses the same container
 images as the Kubernetes deployment mode — only the orchestration differs.
 
 ## 1. Prerequisites
@@ -73,15 +73,16 @@ Then point `IMAGE_REGISTRY`, `IMAGE_REPO`, `BACKEND_TAG`, and `FRONTEND_TAG` in
 
 </details>
 
-## 4. Configure (`.env` + two YAML files)
+## 4. Configure (`.env` + OpenSandbox + two YAML files)
 
-Three files, all gitignored:
+Four files, all gitignored:
 
 | File | What it does |
 |---|---|
 | `.env` | Image tags, host port mappings, infra passwords. Read directly by `docker compose` for variable substitution in `compose.yaml`. |
 | `config/config.production.local.yaml` | Non-secret runtime config (mode, public URL, cookie security, sandbox toggle). Mounted into the backend. |
 | `config/config.production.secrets.yaml` | Secrets — JWT/CSRF/vault material, infra passwords (must match `.env`), LLM provider API keys. Mounted into the backend. |
+| `config/opensandbox.toml` | OpenSandbox server configuration. Its API key must match `sandbox.api_key` in the backend secrets file. |
 
 This section covers the keys needed to boot. For every backend config key,
 the layering rules, and the env-var mapping, see the
@@ -133,7 +134,7 @@ $EDITOR config/config.production.local.yaml
 | `frontend_base_url` | `http://localhost:3000` | Where the backend redirects browsers. |
 | `deployment.mode` | `single_tenant` | `single_tenant` auto-creates an org on first user registration; `multi_tenant` requires explicit org bootstrap. |
 | `auth.cookie_secure` | `false` | Must stay `false` on plain HTTP — otherwise clients silently drop the auth cookie. |
-| `sandbox.enabled` | `false` | Flip to `true` and fill `sandbox.{domain,image,api_key}` in `secrets.yaml` to use an external OpenSandbox. See [Optional: sandbox execution](#optional-sandbox-execution-opensandbox) below. |
+| `sandbox.enabled` | `true` | Required. The backend refuses to start unless it remains true and `sandbox.{domain,image,api_key}` are all configured. |
 
 :::note
 `database.host`, `redis.url`, and `objectstore.endpoint` use Docker DNS names
@@ -194,7 +195,8 @@ docker compose -f deploy/docker-compose/compose.yaml down
 use only when you intend to wipe the deployment.
 :::
 
-`up.sh` refuses to start if `.env` or either YAML config file is missing.
+`up.sh` refuses to start if `.env`, either YAML config file, or
+`config/opensandbox.toml` is missing.
 
 ## 6. Verification
 
@@ -271,19 +273,16 @@ docker compose -f deploy/docker-compose/compose.yaml logs bucket-init
 If rustfs isn't reachable, check the rustfs container's healthcheck — rustfs
 publishes a console on `:9001` you can hit locally to confirm it's up.
 
-## Optional: sandbox execution (OpenSandbox)
+## 8. Required OpenSandbox runtime
 
 CubePlex executes agent tool calls (bash, file read/write, …) inside a
-sandbox. Without it, chat still works but tool calls fail. This section
-covers deploying alibaba's [OpenSandbox](https://github.com/alibaba/OpenSandbox)
-lifecycle server in **Docker runtime mode** alongside the compose stack.
+sandbox. The base compose file deploys alibaba's
+[OpenSandbox](https://github.com/alibaba/OpenSandbox) lifecycle server in
+**Docker runtime mode**.
 
-If you only need CubePlex chat without agent tool calls, skip this section
-and leave `sandbox.enabled: false` in `config.production.local.yaml`.
+### Service
 
-### What the overlay deploys
-
-The optional `compose.opensandbox.yaml` overlay adds one service:
+The base compose stack includes one service:
 
 ```
 opensandbox-server   image: opensandbox/server:latest
@@ -319,7 +318,7 @@ $EDITOR config/config.production.secrets.yaml
 #     image:   "ghcr.io/cubeplexai/cubeplex-sandbox:v0.7.2"
 #     api_key: "<same as [server].api_key in opensandbox.toml>"
 
-# 3. backend non-secret — enable sandbox
+# 3. backend non-secret settings (the example already enables sandbox)
 $EDITOR config/config.production.local.yaml
 #   sandbox:
 #     enabled: true
@@ -327,11 +326,8 @@ $EDITOR config/config.production.local.yaml
 #     use_server_proxy: false    # OpenSandbox v0.1.x drops the port from
 #                                # proxied URLs; use direct host-mapped ports
 
-# 4. up with the overlay
-docker compose \
-  -f compose.yaml \
-  -f compose.opensandbox.yaml \
-  up -d
+# 4. start the complete stack
+docker compose up -d
 ```
 
 Operator-managed values (no template):
@@ -384,7 +380,7 @@ APIs (`POST /sandboxes/{id}/snapshots`, etc.) — both are Kubernetes-only.
 ### Verifying
 
 ```bash
-docker compose -f compose.yaml -f compose.opensandbox.yaml ps
+docker compose -f compose.yaml ps
 # expect: opensandbox-server   Up (healthy)
 ```
 
@@ -411,9 +407,7 @@ containing the sandbox filesystem contents.
 ### Tearing down
 
 ```bash
-docker compose -f compose.yaml -f compose.opensandbox.yaml down
-# This also removes the CubePlex stack. Use `down opensandbox-server`
-# to remove only the overlay's service.
+docker compose -f compose.yaml down
 ```
 
 The MITM CA and any sandbox containers spawned by the server stay on the

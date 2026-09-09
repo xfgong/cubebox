@@ -6,7 +6,7 @@ title: Docker Compose
 # 用 Docker Compose 部署 CubePlex
 
 `docker compose up -d` 在单台主机上部署 CubePlex（backend + frontend +
-Postgres + Redis + rustfs S3 存储）。它使用和 Kubernetes 部署模式完全相同
+Postgres + Redis + rustfs S3 存储 + OpenSandbox）。它使用和 Kubernetes 部署模式完全相同
 的容器镜像，只是编排方式不同。
 
 ## 1. 前置依赖
@@ -70,15 +70,16 @@ deploy/kubernetes/scripts/build-and-push.sh
 
 </details>
 
-## 4. 配置（`.env` + 两个 YAML 文件）
+## 4. 配置（`.env` + OpenSandbox + 两个 YAML 文件）
 
-三个文件，均已在 `.gitignore` 中：
+四个文件，均已在 `.gitignore` 中：
 
 | 文件 | 作用 |
 |---|---|
 | `.env` | 镜像 tag、主机端口映射、基础设施密码。由 `docker compose` 直接读取，用于 `compose.yaml` 中的变量替换。 |
 | `config/config.production.local.yaml` | 非密钥的运行时配置（模式、公开 URL、cookie 安全性、sandbox 开关）。挂载进 backend。 |
 | `config/config.production.secrets.yaml` | 密钥——JWT / CSRF / vault 密钥材料、基础设施密码（必须与 `.env` 一致）、LLM provider API key。挂载进 backend。 |
+| `config/opensandbox.toml` | OpenSandbox server 配置；其 API key 必须和 backend 密钥文件中的 `sandbox.api_key` 一致。 |
 
 本节只覆盖启动所需的 key。完整的后端配置字段、分层规则和环境变量映射，见
 [后端配置参考](./backend-config.md)。
@@ -129,7 +130,7 @@ $EDITOR config/config.production.local.yaml
 | `frontend_base_url` | `http://localhost:3000` | backend 重定向浏览器时使用。 |
 | `deployment.mode` | `single_tenant` | `single_tenant` 在首个用户注册时自动创建组织；`multi_tenant` 需要显式的组织引导流程。 |
 | `auth.cookie_secure` | `false` | 纯 HTTP 环境下必须保持 `false`，否则客户端会静默丢弃认证 cookie。 |
-| `sandbox.enabled` | `false` | 设为 `true` 并在 `secrets.yaml` 中填写 `sandbox.{domain,image,api_key}` 即可接入外部 OpenSandbox。见下方 [可选：沙箱执行](#可选沙箱执行opensandbox)。 |
+| `sandbox.enabled` | `true` | 必填。它必须保持为 true，且 `sandbox.{domain,image,api_key}` 都已配置，否则 backend 拒绝启动。 |
 
 :::note
 `database.host`、`redis.url`、`objectstore.endpoint` 使用 Docker DNS 名称
@@ -187,7 +188,7 @@ docker compose -f deploy/docker-compose/compose.yaml down
 只在确实要清空部署时使用。
 :::
 
-如果缺少 `.env` 或任一 YAML 配置文件，`up.sh` 会拒绝启动。
+如果缺少 `.env`、任一 YAML 配置文件或 `config/opensandbox.toml`，`up.sh` 会拒绝启动。
 
 ## 6. 验证
 
@@ -261,19 +262,15 @@ docker compose -f deploy/docker-compose/compose.yaml logs bucket-init
 如果 rustfs 无法访问，检查 rustfs 容器的健康检查——rustfs 在 `:9001` 上
 提供了一个控制台，可以本地访问确认它是否已启动。
 
-## 可选：沙箱执行（OpenSandbox）
+## 8. 必需的 OpenSandbox runtime
 
-CubePlex 在沙箱中执行 agent 的工具调用（bash、文件读写等）。没有沙箱时，
-聊天仍然可用，但工具调用会失败。本节介绍如何在 **Docker runtime 模式**下
-和 compose 栈一起部署 alibaba 的
+CubePlex 在沙箱中执行 agent 的工具调用（bash、文件读写等）。基础 compose
+文件会以 **Docker runtime 模式**部署 alibaba 的
 [OpenSandbox](https://github.com/alibaba/OpenSandbox) 生命周期服务器。
 
-如果你只需要 CubePlex 聊天、不需要 agent 工具调用，可以跳过本节，让
-`config.production.local.yaml` 中的 `sandbox.enabled` 保持 `false`。
+### 服务
 
-### overlay 部署了什么
-
-可选的 `compose.opensandbox.yaml` overlay 添加了一个服务：
+基础 compose 栈包含一个服务：
 
 ```
 opensandbox-server   镜像: opensandbox/server:latest
@@ -308,7 +305,7 @@ $EDITOR config/config.production.secrets.yaml
 #     image:   "ghcr.io/cubeplexai/cubeplex-sandbox:v0.7.2"
 #     api_key: "<与 opensandbox.toml 中 [server].api_key 相同>"
 
-# 3. backend 非密钥配置 —— 启用 sandbox
+# 3. backend 非密钥配置（示例已启用 sandbox）
 $EDITOR config/config.production.local.yaml
 #   sandbox:
 #     enabled: true
@@ -316,11 +313,8 @@ $EDITOR config/config.production.local.yaml
 #     use_server_proxy: false    # OpenSandbox v0.1.x 会丢失代理 URL 的端口号，
 #                                # 改用直连主机映射端口
 
-# 4. 带着 overlay 启动
-docker compose \
-  -f compose.yaml \
-  -f compose.opensandbox.yaml \
-  up -d
+# 4. 启动完整栈
+docker compose up -d
 ```
 
 需要 operator 自行管理的值（没有模板）：
@@ -371,7 +365,7 @@ CubePlex 会发送 `secureAccess: false`，Docker runtime 就会接受请求。
 ### 验证
 
 ```bash
-docker compose -f compose.yaml -f compose.opensandbox.yaml ps
+docker compose -f compose.yaml ps
 # 期望：opensandbox-server   Up (healthy)
 ```
 
@@ -398,9 +392,7 @@ print(urllib.request.urlopen(req, timeout=5).read().decode())
 ### 拆除
 
 ```bash
-docker compose -f compose.yaml -f compose.opensandbox.yaml down
-# 这也会一并移除 CubePlex 栈。用 `down opensandbox-server`
-# 可以只移除 overlay 的服务。
+docker compose -f compose.yaml down
 ```
 
 MITM CA 以及 server 拉起的沙箱容器会保留在主机 Docker 引擎上——它们不属于

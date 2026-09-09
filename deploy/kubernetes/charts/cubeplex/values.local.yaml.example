@@ -71,12 +71,8 @@ backend:
       # set it only to pin a different sandbox image.
       api_key: "REPLACE_ME"
 
-# Flip backend.sandbox.enabled if you're using an external sandbox endpoint
-# (backend.secrets.sandbox.domain) WITHOUT deploying the OpenSandbox subchart.
-# backend:
-#   sandbox:
-#     enabled: true
-#     use_server_proxy: false
+# To use an external OpenSandbox endpoint instead of the bundled subchart,
+# set opensandbox.enabled: false and replace backend.secrets.sandbox.domain.
 
 postgres:
   auth:
