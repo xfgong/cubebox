@@ -9,7 +9,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from cubeplex.im.link import get_jwt_secret, sign_link_token
-from cubeplex.models import Membership, OrganizationMembership
+from cubeplex.models import Membership, OrganizationMembership, User
 from cubeplex.models.im_connector import IMIdentityLink, IMLinkAccessRequest
 from tests.e2e.conftest import DEFAULT_ORG_ID, DEFAULT_TEST_EMAIL, DEFAULT_WS_ID
 from tests.e2e.im_fixtures import im_cleanup, im_seed_account, im_seed_stub_credential
@@ -247,3 +247,95 @@ async def test_access_request_rejects_bad_claims_and_allows_rejection(
         async with session_factory() as session:
             await im_cleanup(session, account_ids=[account_id], credential_ids=[credential_id])
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_approval_adds_requester_to_org_and_workspace(
+    async_client: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Approving a request grants access when the requester has no memberships yet."""
+    admin_id = (await async_client.get("/api/v1/auth/me")).json()["id"]
+    suffix = secrets.token_hex(5)
+    account_id = f"imac-{suffix}"
+    credential_id = f"cred-{suffix}"
+    requester = User(
+        email=f"im-requester-{suffix}@example.com",
+        hashed_password="not-used-by-this-test",
+    )
+    request_id = ""
+    try:
+        async with session_factory() as session:
+            session.add(requester)
+            await session.flush()
+            await im_seed_stub_credential(
+                session, credential_id=credential_id, org_id=DEFAULT_ORG_ID
+            )
+            await im_seed_account(
+                session,
+                account_id=account_id,
+                org_id=DEFAULT_ORG_ID,
+                ws_id=DEFAULT_WS_ID,
+                user_id=admin_id,
+                credential_id=credential_id,
+                external_account_id=suffix,
+                platform="wecom",
+            )
+            request = IMLinkAccessRequest(
+                org_id=DEFAULT_ORG_ID,
+                workspace_id=DEFAULT_WS_ID,
+                account_id=account_id,
+                im_user_id="requester",
+                user_id=requester.id,
+                platform="wecom",
+            )
+            session.add(request)
+            await session.commit()
+            request_id = request.id
+
+        approved = await async_client.post(
+            f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request_id}/approve"
+        )
+        assert approved.status_code == 204, approved.text
+        async with session_factory() as session:
+            org_membership = await session.scalar(
+                select(OrganizationMembership).where(
+                    OrganizationMembership.user_id == requester.id,
+                    OrganizationMembership.org_id == DEFAULT_ORG_ID,
+                )
+            )
+            assert org_membership is not None
+            assert org_membership.role == "member"
+            membership = await session.scalar(
+                select(Membership).where(
+                    Membership.user_id == requester.id,
+                    Membership.workspace_id == DEFAULT_WS_ID,
+                )
+            )
+            assert membership is not None
+            assert membership.role == "member"
+            assert (
+                await session.scalar(
+                    select(IMIdentityLink.user_id).where(IMIdentityLink.account_id == account_id)
+                )
+                == requester.id
+            )
+    finally:
+        async with session_factory() as session:
+            await im_cleanup(session, account_ids=[account_id], credential_ids=[credential_id])
+            await session.execute(delete(Membership).where(Membership.user_id == requester.id))
+            await session.execute(
+                delete(OrganizationMembership).where(OrganizationMembership.user_id == requester.id)
+            )
+            await session.execute(delete(User).where(User.id == requester.id))
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_approval_of_unknown_access_request_returns_not_found(
+    async_client: httpx.AsyncClient,
+) -> None:
+    response = await async_client.post(
+        f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/ilar-missing/approve"
+    )
+    assert response.status_code == 404
