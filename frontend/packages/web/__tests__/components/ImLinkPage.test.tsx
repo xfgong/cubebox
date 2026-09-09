@@ -79,4 +79,24 @@ describe('IM link confirmation lifecycle', () => {
     )
     expect(navigation.replace).toHaveBeenCalledTimes(1)
   })
+
+  it('lets a non-member request workspace access and shows the pending state', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { detail: { code: 'not_member', message: 'Not a workspace member.' } },
+          { status: 403 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ status: 'pending' }))
+    vi.stubGlobal('fetch', fetch)
+    render(page())
+    const requestAccess = await screen.findByRole('button', {
+      name: messages.im.link.requestAccess,
+    })
+    await act(async () => requestAccess.click())
+    expect(await screen.findByText(messages.im.link.accessPending)).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
 })
