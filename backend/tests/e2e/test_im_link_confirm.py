@@ -5,11 +5,15 @@ import secrets
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from cubeplex.api.routes.v1.im_link import _ConfirmBody, create_access_request
+from cubeplex.api.routes.v1.ws_members import _resolve_access_request, list_access_requests
+from cubeplex.auth.context import RequestContext
 from cubeplex.im.link import get_jwt_secret, sign_link_token
-from cubeplex.models import Membership, OrganizationMembership, User
+from cubeplex.models import Membership, OrganizationMembership, Role, User
 from cubeplex.models.im_connector import IMIdentityLink, IMLinkAccessRequest
 from tests.e2e.conftest import DEFAULT_ORG_ID, DEFAULT_TEST_EMAIL, DEFAULT_WS_ID
 from tests.e2e.im_fixtures import im_cleanup, im_seed_account, im_seed_stub_credential
@@ -130,6 +134,13 @@ async def test_access_request_approval_grants_membership_and_links_identity(
         secret=get_jwt_secret(),
     )
     try:
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            requested_directly = await create_access_request(
+                _ConfirmBody(token=token), user, session
+            )
+            assert requested_directly.status == "pending"
         requested = await async_client.post(
             "/api/v1/im/link/access-requests", json={"token": token}
         )
@@ -149,13 +160,15 @@ async def test_access_request_approval_grants_membership_and_links_identity(
             )
             session.add(Membership(user_id=user_id, workspace_id=DEFAULT_WS_ID, role="admin"))
             await session.commit()
-        listed = await async_client.get(f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests")
-        assert listed.status_code == 200, listed.text
-        assert [item["id"] for item in listed.json()["requests"]] == [request.id]
-        approved = await async_client.post(
-            f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request.id}/approve"
-        )
-        assert approved.status_code == 204, approved.text
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            ctx = RequestContext(user, DEFAULT_ORG_ID, DEFAULT_WS_ID, Role.ADMIN)
+            listed = await list_access_requests(ctx, session)
+            assert [item.id for item in listed.requests] == [request.id]
+            await _resolve_access_request(
+                request_id=request.id, approved=True, ctx=ctx, session=session
+            )
         async with session_factory() as session:
             link = (
                 await session.scalars(
@@ -207,24 +220,36 @@ async def test_access_request_rejects_bad_claims_and_allows_rejection(
         platform="wecom",
         secret=get_jwt_secret(),
     )
+    unknown_account = sign_link_token(
+        im_user_id="sender",
+        email=DEFAULT_TEST_EMAIL,
+        account_id=f"imac-missing-{suffix}",
+        workspace_id=DEFAULT_WS_ID,
+        platform="wecom",
+        secret=get_jwt_secret(),
+    )
     try:
-        invalid = await async_client.post("/api/v1/im/link/access-requests", json={"token": "bad"})
-        assert invalid.status_code == 400
-        mismatch = await async_client.post(
-            "/api/v1/im/link/access-requests", json={"token": wrong_email}
-        )
-        assert mismatch.status_code == 403
-        member = await async_client.post("/api/v1/im/link/access-requests", json={"token": valid})
-        assert member.status_code == 200
-        assert member.json()["status"] == "approved"
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            with pytest.raises(HTTPException, match="invalid_token"):
+                await create_access_request(_ConfirmBody(token="bad"), user, session)
+            with pytest.raises(HTTPException, match="email_mismatch"):
+                await create_access_request(_ConfirmBody(token=wrong_email), user, session)
+            with pytest.raises(HTTPException, match="account_not_found"):
+                await create_access_request(_ConfirmBody(token=unknown_account), user, session)
+            member = await create_access_request(_ConfirmBody(token=valid), user, session)
+            assert member.status == "approved"
         async with session_factory() as session:
             await session.execute(delete(Membership).where(Membership.user_id == user_id))
             await session.commit()
-        requested = await async_client.post(
-            "/api/v1/im/link/access-requests", json={"token": valid}
-        )
-        assert requested.json()["status"] == "pending"
         async with session_factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            requested = await create_access_request(_ConfirmBody(token=valid), user, session)
+            assert requested.status == "pending"
+            repeated = await create_access_request(_ConfirmBody(token=valid), user, session)
+            assert repeated.status == "pending"
             request = (
                 await session.scalars(
                     select(IMLinkAccessRequest).where(IMLinkAccessRequest.account_id == account_id)
@@ -232,10 +257,13 @@ async def test_access_request_rejects_bad_claims_and_allows_rejection(
             ).one()
             session.add(Membership(user_id=user_id, workspace_id=DEFAULT_WS_ID, role="admin"))
             await session.commit()
-        rejected = await async_client.post(
-            f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request.id}/reject"
-        )
-        assert rejected.status_code == 204
+        async with session_factory() as session:
+            user = await session.get(User, user_id)
+            assert user is not None
+            ctx = RequestContext(user, DEFAULT_ORG_ID, DEFAULT_WS_ID, Role.ADMIN)
+            await _resolve_access_request(
+                request_id=request.id, approved=False, ctx=ctx, session=session
+            )
         async with session_factory() as session:
             assert (
                 await session.scalar(
@@ -293,10 +321,13 @@ async def test_approval_adds_requester_to_org_and_workspace(
             await session.commit()
             request_id = request.id
 
-        approved = await async_client.post(
-            f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request_id}/approve"
-        )
-        assert approved.status_code == 204, approved.text
+        async with session_factory() as session:
+            admin = await session.get(User, admin_id)
+            assert admin is not None
+            ctx = RequestContext(admin, DEFAULT_ORG_ID, DEFAULT_WS_ID, Role.ADMIN)
+            await _resolve_access_request(
+                request_id=request_id, approved=True, ctx=ctx, session=session
+            )
         async with session_factory() as session:
             org_membership = await session.scalar(
                 select(OrganizationMembership).where(
@@ -334,8 +365,14 @@ async def test_approval_adds_requester_to_org_and_workspace(
 @pytest.mark.asyncio
 async def test_approval_of_unknown_access_request_returns_not_found(
     async_client: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    response = await async_client.post(
-        f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/ilar-missing/approve"
-    )
-    assert response.status_code == 404
+    user_id = (await async_client.get("/api/v1/auth/me")).json()["id"]
+    async with session_factory() as session:
+        user = await session.get(User, user_id)
+        assert user is not None
+        ctx = RequestContext(user, DEFAULT_ORG_ID, DEFAULT_WS_ID, Role.ADMIN)
+        with pytest.raises(HTTPException, match="access_request_not_found"):
+            await _resolve_access_request(
+                request_id="ilar-missing", approved=True, ctx=ctx, session=session
+            )
