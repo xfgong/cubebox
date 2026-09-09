@@ -135,6 +135,9 @@ async def test_access_request_approval_grants_membership_and_links_identity(
         )
         assert requested.status_code == 200, requested.text
         assert requested.json()["status"] == "pending"
+        repeated = await async_client.post("/api/v1/im/link/access-requests", json={"token": token})
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["status"] == "pending"
         async with session_factory() as session:
             request = (
                 await session.scalars(
@@ -146,6 +149,9 @@ async def test_access_request_approval_grants_membership_and_links_identity(
             )
             session.add(Membership(user_id=user_id, workspace_id=DEFAULT_WS_ID, role="admin"))
             await session.commit()
+        listed = await async_client.get(f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests")
+        assert listed.status_code == 200, listed.text
+        assert [item["id"] for item in listed.json()["requests"]] == [request.id]
         approved = await async_client.post(
             f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request.id}/approve"
         )
