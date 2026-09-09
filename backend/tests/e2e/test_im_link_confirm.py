@@ -167,3 +167,83 @@ async def test_access_request_approval_grants_membership_and_links_identity(
         async with session_factory() as session:
             await im_cleanup(session, account_ids=[account_id], credential_ids=[credential_id])
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_access_request_rejects_bad_claims_and_allows_rejection(
+    async_client: httpx.AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    user_id = (await async_client.get("/api/v1/auth/me")).json()["id"]
+    suffix = secrets.token_hex(5)
+    account_id = f"imac-{suffix}"
+    credential_id = f"cred-{suffix}"
+    async with session_factory() as session:
+        await im_seed_stub_credential(session, credential_id=credential_id, org_id=DEFAULT_ORG_ID)
+        await im_seed_account(
+            session,
+            account_id=account_id,
+            org_id=DEFAULT_ORG_ID,
+            ws_id=DEFAULT_WS_ID,
+            user_id=user_id,
+            credential_id=credential_id,
+            external_account_id=suffix,
+            platform="wecom",
+        )
+        await session.commit()
+    valid = sign_link_token(
+        im_user_id="sender",
+        email=DEFAULT_TEST_EMAIL,
+        account_id=account_id,
+        workspace_id=DEFAULT_WS_ID,
+        platform="wecom",
+        secret=get_jwt_secret(),
+    )
+    wrong_email = sign_link_token(
+        im_user_id="sender",
+        email="other@example.com",
+        account_id=account_id,
+        workspace_id=DEFAULT_WS_ID,
+        platform="wecom",
+        secret=get_jwt_secret(),
+    )
+    try:
+        invalid = await async_client.post("/api/v1/im/link/access-requests", json={"token": "bad"})
+        assert invalid.status_code == 400
+        mismatch = await async_client.post(
+            "/api/v1/im/link/access-requests", json={"token": wrong_email}
+        )
+        assert mismatch.status_code == 403
+        member = await async_client.post("/api/v1/im/link/access-requests", json={"token": valid})
+        assert member.status_code == 200
+        assert member.json()["status"] == "approved"
+        async with session_factory() as session:
+            await session.execute(delete(Membership).where(Membership.user_id == user_id))
+            await session.commit()
+        requested = await async_client.post(
+            "/api/v1/im/link/access-requests", json={"token": valid}
+        )
+        assert requested.json()["status"] == "pending"
+        async with session_factory() as session:
+            request = (
+                await session.scalars(
+                    select(IMLinkAccessRequest).where(IMLinkAccessRequest.account_id == account_id)
+                )
+            ).one()
+            session.add(Membership(user_id=user_id, workspace_id=DEFAULT_WS_ID, role="admin"))
+            await session.commit()
+        rejected = await async_client.post(
+            f"/api/v1/ws/{DEFAULT_WS_ID}/members/access-requests/{request.id}/reject"
+        )
+        assert rejected.status_code == 204
+        async with session_factory() as session:
+            assert (
+                await session.scalar(
+                    select(IMLinkAccessRequest.status).where(IMLinkAccessRequest.id == request.id)
+                )
+                == "rejected"
+            )
+    finally:
+        async with session_factory() as session:
+            await im_cleanup(session, account_ids=[account_id], credential_ids=[credential_id])
+            await session.commit()
