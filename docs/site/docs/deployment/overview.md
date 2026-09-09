@@ -15,7 +15,7 @@ the orchestration differs.
 |---|---|---|
 | Best for | A single host — quick self-hosted setup, small teams, internal demos | Multi-node clusters, production-scale, autoscaling |
 | Orchestration | `docker compose up -d` | `helm upgrade --install` |
-| Infra included | Postgres, Redis, rustfs (S3-compatible object store) | Postgres, Redis, rustfs, optionally the alibaba OpenSandbox umbrella |
+| Infra included | Postgres, Redis, rustfs, OpenSandbox | Postgres, Redis, rustfs, and the alibaba OpenSandbox umbrella |
 | Guide | [Docker Compose install guide](./docker-compose.md) | [Kubernetes install guide](./kubernetes.md) |
 
 If you're not sure, start with Docker Compose — it's the simpler setup and
@@ -23,14 +23,14 @@ covers everything except horizontal scaling across multiple machines.
 
 ## Agent sandbox
 
-CubePlex runs agent tool calls (bash, file read/write, …) inside a sandbox. A
-base install gives you chat, but **tool calls fail until a sandbox is
-configured** — so most deployments will want one. Both guides cover it as a
-clearly-marked step: the bundled alibaba [OpenSandbox](https://github.com/alibaba/OpenSandbox)
-(a subchart on Kubernetes, an overlay on Docker Compose) or an external
-sandbox endpoint. Sandbox images default to Docker Hub (`opensandbox/*`) and
-GHCR (`ghcr.io/cubeplexai/cubeplex-sandbox`); mainland-China mirrors are noted
-inline in each guide.
+CubePlex runs agent tool calls (bash, file read/write, …) inside an
+[OpenSandbox](https://github.com/alibaba/OpenSandbox) sandbox. It is a required
+part of every deployment: Docker Compose includes the service, and Helm bundles
+it by default. Helm may instead point at an externally managed OpenSandbox
+endpoint, but a backend always requires a non-empty endpoint, sandbox image,
+and API key. Sandbox images default to Docker Hub (`opensandbox/*`) and GHCR
+(`ghcr.io/cubeplexai/cubeplex-sandbox`); mainland-China mirrors are noted inline
+in each guide.
 
 ## LLM provider configuration
 

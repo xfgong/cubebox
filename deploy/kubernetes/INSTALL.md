@@ -1,7 +1,7 @@
 # CubePlex on Kubernetes — Install Guide
 
 A single `helm upgrade --install` deploys CubePlex (backend + frontend +
-Postgres + Redis + rustfs, optionally the alibaba OpenSandbox umbrella) to
+Postgres + Redis + rustfs + the alibaba OpenSandbox umbrella) to
 an existing Kubernetes cluster.
 
 **The full, maintained install guide lives on the docs site:**

@@ -1,12 +1,11 @@
 # CubePlex on docker-compose
 
 Single-host deployment of CubePlex (backend, frontend, Postgres, Redis,
-rustfs object store) with `docker compose up -d`.
+rustfs object store, and OpenSandbox) with `docker compose up -d`.
 
 - **Install guide:** [cubeplex.ai/docs/deployment/docker-compose](https://cubeplex.ai/docs/deployment/docker-compose)
-  — also covers the two optional overlays: OpenSandbox sandbox execution
-  (what it deploys, and which CubePlex features docker runtime mode can and
-  can't serve) and docling document parsing (combined or standalone).
+  — covers the required OpenSandbox runtime and the optional docling document
+  parsing overlay.
 - Uses the **same backend / frontend images** as the kubernetes mode;
   build them once with `deploy/kubernetes/scripts/build-and-push.sh`.
 
@@ -16,9 +15,7 @@ rustfs object store) with `docker compose up -d`.
 deploy/docker-compose/
 ├── README.md
 ├── INSTALL.md
-├── OPENSANDBOX.md
 ├── compose.yaml
-├── compose.opensandbox.yaml   # optional: sandbox execution overlay
 ├── compose.docling.yaml       # optional: document parsing overlay
 ├── .env.example
 ├── config/
@@ -42,7 +39,8 @@ cd deploy/docker-compose
 cp .env.example .env
 cp config/config.production.local.yaml.example   config/config.production.local.yaml
 cp config/config.production.secrets.yaml.example config/config.production.secrets.yaml
-$EDITOR .env config/config.production.local.yaml config/config.production.secrets.yaml
+cp config/opensandbox.toml.example config/opensandbox.toml
+$EDITOR .env config/config.production.local.yaml config/config.production.secrets.yaml config/opensandbox.toml
 
 deploy/docker-compose/scripts/up.sh
 deploy/docker-compose/scripts/smoke-test.sh

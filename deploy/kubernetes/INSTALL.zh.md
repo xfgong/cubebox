@@ -1,7 +1,7 @@
 # CubePlex 部署手册
 
 一条 `helm upgrade --install` 命令即可将 CubePlex（backend + frontend +
-Postgres + Redis + rustfs，可选 alibaba OpenSandbox 全家桶）部署到已有的
+Postgres + Redis + rustfs + alibaba OpenSandbox 全家桶）部署到已有的
 Kubernetes 集群中。
 
 **完整的、持续维护的安装指南在文档站点上：**

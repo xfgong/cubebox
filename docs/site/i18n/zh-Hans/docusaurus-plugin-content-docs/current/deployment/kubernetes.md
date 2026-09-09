@@ -6,7 +6,7 @@ title: Kubernetes（Helm）
 # 用 Kubernetes 部署 CubePlex
 
 一条 `helm upgrade --install` 命令即可将 CubePlex（backend + frontend +
-Postgres + Redis + rustfs，可选 alibaba OpenSandbox 全家桶）部署到已有的
+Postgres + Redis + rustfs + alibaba OpenSandbox 全家桶）部署到已有的
 Kubernetes 集群中。
 
 backend Deployment 需要两个标准 Kubernetes Pod 特性：**init container**
@@ -55,7 +55,7 @@ Namespace: cubeplex
 │    Next.js standalone runtime (node server.js)                 │
 ├──────────────┬─────────────┬───────────────┬──────────────────┤
 │ postgres SS  │ redis SS    │ rustfs SS     │ opensandbox      │
-│  + PVC       │  + PVC      │  + PVC + Job  │（可选 subchart） │
+│  + PVC       │  + PVC      │  + PVC + Job  │（内置 subchart） │
 │              │             │  (bucket init)│                  │
 └──────────────┴─────────────┴───────────────┴──────────────────┘
                                             │
@@ -261,10 +261,10 @@ backend:
 直接失败（`CrashLoopBackOff`），而不是悄悄降级，所以配置错了 `kubectl get
 pods` 立刻能看到，不会等到第一条聊天消息才冒出 `no_default_preset` 500。
 
-### 4.5 Sandbox（可选）
+### 4.5 必需的 OpenSandbox provider
 
-sandbox 是 agent 工具调用（bash、read 等）实际执行的容器运行时。
-禁用后 agent 仍可对话，但工具调用会失败。
+OpenSandbox 是 agent 工具调用（bash、read 等）实际执行的容器运行时。
+backend 会在启动时要求它存在，并拒绝不完整的配置。
 
 ```yaml
 backend:
@@ -274,17 +274,15 @@ backend:
       # image 默认 cubeplex-sandbox:v<chart 版本>；仅在需要覆盖时才设
       api_key: "..."
   sandbox:
-    enabled: true                       # 使用外部 sandbox 时打开
     use_server_proxy: false             # 集群无法直接访问 sandbox pod 时设为 true
 ```
 
-三种典型场景：
+两种受支持的部署方式：
 
 | 场景 | `values.local.yaml` |
 |---|---|
 | 使用 chart 自带的 OpenSandbox subchart | `opensandbox.enabled: true`；`backend.secrets.sandbox.domain` 指向 `opensandbox-server.opensandbox-system.svc.cluster.local:80`（vendored 的 subchart 写死了 `fullnameOverride`/`namespaceOverride`——不带 release 名前缀，不在 `cubeplex` 命名空间，端口是 80 不是 8090） |
-| 使用外部已有 OpenSandbox | `opensandbox.enabled: false`；`backend.sandbox.enabled: true`；`backend.secrets.sandbox.domain` 填外部地址 |
-| 不使用 sandbox（仅对话） | `opensandbox.enabled: false`；`backend.sandbox.enabled` 留空（跟随 `opensandbox.enabled` → false） |
+| 使用外部已有 OpenSandbox | `opensandbox.enabled: false`；`backend.secrets.sandbox.domain` 填外部地址 |
 
 backend 默认 `sandbox.secure_access: false`。浏览器和终端面板**不再**走
 OpenSandbox 的 `gateway`/`ingress` 组件——它们通过 CubePlex 自己的、带 token
@@ -432,9 +430,9 @@ rustfs:
     storageClass: "fast-ssd"
 ```
 
-### 4.9 OpenSandbox subchart（可选）
+### 4.9 OpenSandbox subchart
 
-chart 可以在同一个 release 下打包 alibaba 的 OpenSandbox umbrella
+chart 默认会在同一个 release 下打包 alibaba 的 OpenSandbox umbrella
 （controller + server）。它的 controller / server / execd / egress 镜像默认
 走 Docker Hub（`opensandbox/*`），集群节点需要能拉取到。国内集群可在 vendored
 子 chart 的 values 中，把每个镜像改用
@@ -443,8 +441,7 @@ tag 相同）。
 
 ```yaml
 opensandbox:
-  enabled: false                # values.yaml 中默认是 true；使用外部
-                                 # sandbox 时关闭
+  enabled: false                # 改用外部、已运行的 OpenSandbox
 ```
 
 ### 4.10 Egress 密钥注入（可选）
@@ -895,13 +892,16 @@ backend:
           models:
             - { id: "gpt-5.6-terra", name: "GPT-5.6 Terra", input: ["text", "image"],
                 context_window: 128000, max_tokens: 16384 }
+    sandbox:
+      domain: "opensandbox-server.opensandbox-system.svc.cluster.local:80"
+      api_key: "<与内置 OpenSandbox server API key 相同的值>"
 
 postgres: { auth: { password: "<openssl rand -hex 16>" } }
 redis:    { auth: { password: "<openssl rand -hex 16>" } }
 rustfs:   { auth: { secretKey: "<openssl rand -hex 16>" } }
 
 opensandbox:
-  enabled: false
+  enabled: true
 ```
 
 完整的带注释模板见仓库中的
